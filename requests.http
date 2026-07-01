@@ -1,0 +1,139 @@
+### contrat-service — collection d'exemples (VS Code REST Client / IntelliJ HTTP)
+### Base
+@host = http://localhost:8091
+@base = {{host}}/api/v1
+
+### JWT de test (DIRECTEUR d'une école) — généré avec le secret partagé.
+### Régénérer via :
+### node -e "console.log(require('jsonwebtoken').sign({userId:'11111111-1111-1111-1111-111111111111',schoolId:'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',roleCode:'DIRECTEUR'},'educa_access_secret_2026',{expiresIn:'2h'}))"
+@jwt = REMPLACER_PAR_UN_JWT
+
+### JWT admin EDUCA (schoolId = tenant système)
+@jwtEduca = REMPLACER_PAR_UN_JWT_EDUCA
+
+# -----------------------------------------------------------------------------
+### 0. Santé
+GET {{host}}/health
+
+# -----------------------------------------------------------------------------
+### 1. Référentiel des types de contrat
+GET {{base}}/contract-types
+Authorization: Bearer {{jwt}}
+
+# -----------------------------------------------------------------------------
+### 2. Créer un contrat PERSONNEL (schoolId du body est IGNORÉ)
+# @name createPersonnel
+POST {{base}}/contracts
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{
+  "contractTypeId": "REMPLACER_PAR_UN_ID_CDI",
+  "title": "Contrat enseignant — Jean Baptiste",
+  "startDate": "2026-09-01",
+  "amount": "35000.00",
+  "currency": "HTG",
+  "schoolId": "CE-CHAMP-SERA-IGNORE"
+}
+
+### Capturer l'id créé
+@contractId = {{createPersonnel.response.body.data.id}}
+
+# -----------------------------------------------------------------------------
+### 3. Ajouter une partie (employé)
+POST {{base}}/contracts/{{contractId}}/parties
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{
+  "partyType": "PERSON",
+  "roleInContract": "EMPLOYE",
+  "fullName": "Jean Baptiste",
+  "email": "jean.baptiste@example.com"
+}
+
+# -----------------------------------------------------------------------------
+### 4. Uploader un document PDF (multipart)
+POST {{base}}/contracts/{{contractId}}/documents
+Authorization: Bearer {{jwt}}
+Content-Type: multipart/form-data; boundary=----boundary
+
+------boundary
+Content-Disposition: form-data; name="type"
+
+ORIGINAL
+------boundary
+Content-Disposition: form-data; name="document"; filename="contrat.pdf"
+Content-Type: application/pdf
+
+< ./data/sample.pdf
+------boundary--
+
+# -----------------------------------------------------------------------------
+### 5. Transitions DRAFT → ACTIVE
+POST {{base}}/contracts/{{contractId}}/transition
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{ "toStatus": "PENDING_APPROVAL" }
+
+###
+POST {{base}}/contracts/{{contractId}}/transition
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{ "toStatus": "APPROVED" }
+
+###
+POST {{base}}/contracts/{{contractId}}/transition
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{ "toStatus": "PENDING_SIGNATURE" }
+
+###
+POST {{base}}/contracts/{{contractId}}/transition
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{ "toStatus": "ACTIVE", "reason": "Signé par les deux parties" }
+
+# -----------------------------------------------------------------------------
+### 6. Transition INTERDITE → 409 (DRAFT direct vers ACTIVE sur un nouveau contrat)
+POST {{base}}/contracts/{{contractId}}/transition
+Authorization: Bearer {{jwt}}
+Content-Type: application/json
+
+{ "toStatus": "DRAFT" }
+
+# -----------------------------------------------------------------------------
+### 7. Détail du contrat
+GET {{base}}/contracts/{{contractId}}
+Authorization: Bearer {{jwt}}
+
+### 8. Historique (statuts + audit)
+GET {{base}}/contracts/{{contractId}}/history
+Authorization: Bearer {{jwt}}
+
+# -----------------------------------------------------------------------------
+### 9. Liste paginée + filtres
+GET {{base}}/contracts?page=1&limit=20&status=ACTIVE&search=enseignant
+Authorization: Bearer {{jwt}}
+
+# -----------------------------------------------------------------------------
+### 10. Créer un contrat ETABLISSEMENT (admin EDUCA requis)
+POST {{base}}/contracts
+Authorization: Bearer {{jwtEduca}}
+Content-Type: application/json
+
+{
+  "contractTypeId": "REMPLACER_PAR_UN_ID_ABONNEMENT",
+  "title": "Abonnement SaaS — École Sainte-Marie",
+  "subjectSchoolId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "amount": "120000.00",
+  "renewalMode": "AUTO"
+}
+
+### 11. Lister les contrats d'une école précise
+GET {{base}}/contracts?scope=ETABLISSEMENT&subjectSchoolId=bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb
+Authorization: Bearer {{jwtEduca}}

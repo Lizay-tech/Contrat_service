@@ -1,0 +1,116 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: educa_contrat_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - contrat_pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: educa_contrat_redis
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: educa_contrat_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: educa
+      RABBITMQ_DEFAULT_PASS: educa
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Applies migrations + seeds, then exits. The app waits on its completion.
+  migrate:
+    build: .
+    container_name: educa_contrat_migrate
+    command: sh -c "npm run migrate:prod && npm run seed:prod"
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: '5432'
+      DB_NAME: educa_contrat_service
+      DB_USER: educa
+      DB_PASSWORD: educa
+      REDIS_HOST: redis
+      RABBITMQ_URL: amqp://educa:educa@rabbitmq:5672
+      JWT_SECRET: educa_access_secret_2026
+      EDUCA_SYSTEM_TENANT_ID: 00000000-0000-0000-0000-0000000ed0ca
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  contrat-service:
+    build: .
+    container_name: educa_contrat_service
+    environment:
+      NODE_ENV: production
+      PORT: '8091'
+      DB_HOST: postgres
+      DB_PORT: '5432'
+      DB_NAME: educa_contrat_service
+      DB_USER: educa
+      DB_PASSWORD: educa
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      RABBITMQ_URL: amqp://educa:educa@rabbitmq:5672
+      RABBITMQ_EXCHANGE: educa.contracts
+      JWT_SECRET: educa_access_secret_2026
+      EDUCA_SYSTEM_TENANT_ID: 00000000-0000-0000-0000-0000000ed0ca
+      EDUCA_ADMIN_ROLES: SUPER_ADMIN,EDUCA_ADMIN
+      UPLOAD_DIR: /app/data/uploads
+    ports:
+      - '8091:8091'
+    volumes:
+      - contrat_uploads:/app/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Nginx frontal (TLS termination / reverse proxy in front of the service,
+  # itself exposed behind Kong in the wider EDUCA platform).
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: educa_contrat_nginx
+    ports:
+      - '8080:80'
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - contrat-service
+    restart: unless-stopped
+
+volumes:
+  contrat_pgdata:
+  contrat_uploads:
