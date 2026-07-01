@@ -1,0 +1,119 @@
+### contrat-service — exemples de requêtes (REST Client VSCode / IntelliJ HTTP)
+###
+### Générer un JWT de test (secret partagé educa_access_secret_2026) :
+###
+###   node -e "console.log(require('jsonwebtoken').sign({userId:'11111111-1111-1111-1111-111111111111',schoolId:'22222222-2222-2222-2222-222222222222',roleCode:'DIRECTEUR'},'educa_access_secret_2026',{expiresIn:'2h'}))"
+###
+###   node -e "console.log(require('jsonwebtoken').sign({userId:'33333333-3333-3333-3333-333333333333',schoolId:'99999999-9999-9999-9999-999999999999',roleCode:'SUPER_ADMIN'},'educa_access_secret_2026',{expiresIn:'2h'}))"
+###
+### Puis coller les valeurs ci-dessous.
+
+@baseUrl = http://localhost:8091/api/v1
+@token = COLLER_LE_JWT_DIRECTEUR
+@adminToken = COLLER_LE_JWT_SUPER_ADMIN
+@contractTypeIdPersonnel = COLLER_UN_ID_DE_TYPE_PERSONNEL
+@contractTypeIdEtab = COLLER_UN_ID_DE_TYPE_ETABLISSEMENT
+@contractId = COLLER_UN_ID_DE_CONTRAT
+@subjectSchoolId = 44444444-4444-4444-4444-444444444444
+
+### Santé (publique)
+GET {{baseUrl}}/health
+
+### Référentiel des types de contrat
+GET {{baseUrl}}/contract-types
+Authorization: Bearer {{token}}
+
+### Créer un contrat PERSONNEL (DRAFT)
+POST {{baseUrl}}/contracts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "contractTypeId": "{{contractTypeIdPersonnel}}",
+  "title": "Contrat enseignant - Jean Baptiste",
+  "startDate": "2026-09-01",
+  "durationDays": 300,
+  "amount": 25000,
+  "currency": "HTG"
+}
+
+### Créer un contrat ETABLISSEMENT (admin EDUCA requis)
+POST {{baseUrl}}/contracts
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "contractTypeId": "{{contractTypeIdEtab}}",
+  "title": "Abonnement SaaS 2026",
+  "subjectSchoolId": "{{subjectSchoolId}}",
+  "startDate": "2026-01-01",
+  "amount": 120000
+}
+
+### Liste paginée + filtres
+GET {{baseUrl}}/contracts?page=1&limit=20&status=DRAFT
+Authorization: Bearer {{token}}
+
+### Lister les contrats d'établissement d'une école
+GET {{baseUrl}}/contracts?scope=ETABLISSEMENT&subjectSchoolId={{subjectSchoolId}}
+Authorization: Bearer {{adminToken}}
+
+### Détail
+GET {{baseUrl}}/contracts/{{contractId}}
+Authorization: Bearer {{token}}
+
+### Mise à jour (uniquement en DRAFT)
+PATCH {{baseUrl}}/contracts/{{contractId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Contrat enseignant - Jean Baptiste (révisé)",
+  "amount": 27000
+}
+
+### Ajouter une partie
+POST {{baseUrl}}/contracts/{{contractId}}/parties
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "partyType": "PERSON",
+  "roleInContract": "EMPLOYE",
+  "fullName": "Jean Baptiste",
+  "email": "jean@ecole.ht"
+}
+
+### Transition d'état (machine à états) — DRAFT -> PENDING_APPROVAL
+POST {{baseUrl}}/contracts/{{contractId}}/transition
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "toStatus": "PENDING_APPROVAL",
+  "reason": "Soumis pour approbation"
+}
+
+### Upload d'un document (multipart)
+POST {{baseUrl}}/contracts/{{contractId}}/documents
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=----boundary
+
+------boundary
+Content-Disposition: form-data; name="type"
+
+ORIGINAL
+------boundary
+Content-Disposition: form-data; name="file"; filename="contrat.pdf"
+Content-Type: application/pdf
+
+< ./storage/sample/contrat.pdf
+------boundary--
+
+### Lister les documents
+GET {{baseUrl}}/contracts/{{contractId}}/documents
+Authorization: Bearer {{token}}
+
+### Historique des statuts + audit
+GET {{baseUrl}}/contracts/{{contractId}}/history
+Authorization: Bearer {{token}}

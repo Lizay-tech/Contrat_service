@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: contrat_postgres
+    environment:
+      POSTGRES_DB: educa_contrat_service
+      POSTGRES_USER: educa
+      POSTGRES_PASSWORD: educa_secret
+    ports:
+      - '5433:5432'
+    volumes:
+      - contrat_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U educa -d educa_contrat_service']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: contrat_redis
+    ports:
+      - '6380:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: contrat_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: educa
+      RABBITMQ_DEFAULT_PASS: educa
+    ports:
+      - '5673:5672'
+      - '15673:15672'
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  contrat-service:
+    build: .
+    container_name: contrat_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 8091
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: educa_contrat_service
+      DB_USER: educa
+      DB_PASSWORD: educa_secret
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://educa:educa@rabbitmq:5672
+      RABBITMQ_EXCHANGE: educa.contracts
+      JWT_SECRET: educa_access_secret_2026
+      EDUCA_SYSTEM_TENANT_ID: 00000000-0000-0000-0000-000000000001
+      EDUCA_ADMIN_ROLES: SUPER_ADMIN,EDUCA_ADMIN
+      UPLOAD_DIR: /app/storage/uploads
+      ACADEMIC_YEAR_SERVICE_URL: http://annee-scolaire-service:8082
+      SIGNATURE_SERVICE_URL: http://signature-service:8093
+      COMMUNICATION_SERVICE_URL: http://communication-core-service:8087
+    ports:
+      - '8091:8091'
+    volumes:
+      - contrat_uploads:/app/storage/uploads
+    # Applique les migrations + seeders puis demarre le service.
+    command: sh -c "npm run migrate:prod && npm run seed:prod && node dist/server.js"
+
+volumes:
+  contrat_pg:
+  contrat_uploads:
