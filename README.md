@@ -270,6 +270,41 @@ Prestation de service · Convention de stage · Abonnement SaaS école.
 - `EDUCA_ADMIN_ROLES` (déf. `SUPER_ADMIN,EDUCA_ADMIN`) : contrats d'établissement, gestion des modèles PREDEFINED.
 - `TEMPLATE_MANAGER_ROLES` (déf. `SCHOOL_ADMIN,RESP_RH,EDUCA_ADMIN,SUPER_ADMIN`) : création/édition/publication de modèles.
 
+## 19b. Agrégation / auto-remplissage (module `aggregation`)
+
+Assemble un **ContractContext** depuis les microservices réels et **pré-remplit** les variables
+du template (corrige les variables vides du PDF). **Résilient** : une source absente ne bloque pas
+la création (contexte partiel + `missingSources`) ; les **valeurs saisies priment** sur l'agrégé.
+
+**Sources & routes réelles découvertes** (clients dans `src/infrastructure/clients/`) :
+
+| Source | Route réelle | Enveloppe | Champs utilisés |
+|---|---|---|---|
+| ecole-service | `GET /api/schools/by-id/:id` | `{ ok, data }` | `identity.nom`, `identity.logo_url`, `contact.adresse_ligne1/ville/departement/pays/telephone/email_officiel`, `meta.code_ecole`, `access[].contactResponsableNom` (proxy directeur) |
+| enseignant-service | `GET /api/teachers/:id` | `{ success, data }` | `nom, prenom, poste, departement, ecole_id, matricule, date_naissance, nationalite, adresse, telephone_principal, email_professionnel, document_identite.*, superviseur_academique_id` |
+| affectations-academiques | `GET /api/affectations/enseignants/:id` (ou `?enseignant_id=`) | `{ success, data }` | `dateDebut`, `isActive`, `ecoleId` (poste/dépt/manager viennent du personnel) |
+| manage-account | `GET /api/users/:id` | `{ success, data }` | `first_name, last_name, email, phone` (repli si personnel absent) |
+| years-service | `GET /academic-years/active` | `{ success, data }` | `id`, `name` (= « 2025-2026 ») |
+| signature-service | (cf. §16) | | signatures par défaut |
+| **rh / configuration / document** | **inexistants** → **fallback local** (valeurs saisies / `directorFunction='Directeur'`, `currency='HTG'`) | | |
+
+**Endpoints** :
+- `GET /contracts/aggregate/preview?employeeId=&templateId=&assignmentId=&schoolId=` → `ContractContext`
+  assemblé + `variables` résolues + `template.missingRequired` + `missingSources` (pour pré-remplir le formulaire).
+- `POST /contracts/from-template` accepte `employeeId`/`assignmentId` : agrège, **fusionne** `agrégé < saisi`,
+  rend le corps, persiste `variables` (jsonb complet) + `rendered_body` + PDF. Requises manquantes → **422**.
+
+**Auth inter-service** : le client propage le **JWT de l'appelant** + `X-Academic-Year-Id` (année active) ;
+cache Redis court (`AGGREGATION_CACHE_TTL`) sur les données stables (école, année) ; timeout + dégradation → `null`.
+
+**Réseau** : tous les services sur `educa-net` ; `*_SERVICE_URL` = noms de conteneurs
+(`educa-dev-ecole`, `educa-dev-enseignant`, `educa-dev-affectation:3006`, `educa-dev-annee:8082`,
+`educa-dev-account:8081`, `educa-dev-signature:8093`) — à adapter aux vrais noms. Vérifier avec `wget`.
+
+**Modèles par poste** (seeder [`0004-position-templates.ts`](src/infrastructure/database/seeders/0004-position-templates.ts)) :
+5 modèles PREDEFINED clonables — Administrateur administratif, Responsable pédagogique, Bibliothécaire,
+Responsable disciplinaire, Enseignant — chacun avec mission, responsabilités et articles (structure §7).
+
 ## 19. Tests Phase 2
 
 `tests/render.test.ts` (unitaire : substitution, variables requises, dates FR, nombre en lettres)

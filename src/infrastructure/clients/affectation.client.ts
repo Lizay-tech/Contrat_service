@@ -1,26 +1,65 @@
+import { env } from '../../shared/config/env';
+import { getJson } from './http-client';
 import type { AssignmentBlock } from '../../modules/aggregation/contract-context';
 
 /**
- * Client affectation-service (source DEDIEE, optionnelle).
+ * Client affectations-academiques-service (route reelle, port 3006).
+ *   GET /api/affectations/enseignants/:id        -> affectation par id
+ *   GET /api/affectations/enseignants?enseignant_id=...&is_active=true -> liste
+ * JWT + tenant requis (propages). Enveloppe { success, data } / { success, data: [] }.
  *
- * Note: enseignant-service porte deja poste/departement/ecole/superviseur, qui
- * suffisent a deriver l'affectation (cf. assignmentFromEmployee). Ce client
- * enrichit avec une source dediee QUAND ses routes sont confirmees. Tant que ce
- * n'est pas le cas, il degrade proprement (retourne null) et l'affectation
- * derivee du dossier personnel est utilisee.
+ * Ce service NE porte PAS poste/departement/manager (ceux-ci viennent du dossier
+ * personnel). Il apporte: date de prise de fonction (dateDebut), statut (isActive),
+ * type d'affectation, ecole. On enrichit donc l'affectation derivee du personnel.
  */
+interface RemoteAssignment {
+  id?: string;
+  ecoleId?: string;
+  enseignantId?: string;
+  type?: string;
+  dateDebut?: string;
+  dateFin?: string | null;
+  isActive?: boolean;
+}
+
+function map(a: RemoteAssignment): Partial<AssignmentBlock> {
+  const block: Partial<AssignmentBlock> = {};
+  if (a.dateDebut) block.startDate = a.dateDebut;
+  if (a.ecoleId) block.schoolId = a.ecoleId;
+  if (typeof a.isActive === 'boolean') block.status = a.isActive ? 'actif' : 'inactif';
+  return block;
+}
+
 export interface AssignmentQuery {
   assignmentId?: string | null;
   employeeId?: string | null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function getAssignment(
-  _query: AssignmentQuery,
-  _token: string | null,
-  _academicYearId: string | null,
+  query: AssignmentQuery,
+  token: string | null,
+  academicYearId: string | null,
 ): Promise<Partial<AssignmentBlock> | null> {
-  // TODO(reseau): brancher la route reelle du service d'affectation une fois
-  // confirmee (methode + chemin + champs). Pour l'instant, source non dediee.
+  const base = `${env.clients.affectationUrl}/api/affectations/enseignants`;
+
+  if (query.assignmentId) {
+    const a = await getJson<RemoteAssignment>(`${base}/${query.assignmentId}`, {
+      token,
+      academicYearId,
+      cacheKey: `affectation:${query.assignmentId}`,
+      ttlSeconds: 60,
+    });
+    return a ? map(a) : null;
+  }
+
+  if (query.employeeId) {
+    const list = await getJson<RemoteAssignment[]>(
+      `${base}?enseignant_id=${query.employeeId}&is_active=true`,
+      { token, academicYearId, ttlSeconds: 60 },
+    );
+    const first = Array.isArray(list) ? list[0] : null;
+    return first ? map(first) : null;
+  }
+
   return null;
 }

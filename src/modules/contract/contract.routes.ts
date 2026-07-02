@@ -24,8 +24,12 @@ import {
   getContractSignatures,
   postSignatureRequest,
 } from '../signature/signature.controller';
+import { getAggregatePreview } from '../aggregation/aggregation.controller';
 
 const router = Router();
+
+// Agregation (avant /:id pour eviter la capture par le parametre).
+router.get('/aggregate/preview', tenantHandler(getAggregatePreview));
 
 // Creation - resout l'annee scolaire active avant d'entrer dans la transaction.
 router.post('/', academicYearMiddleware, tenantHandler(postContract));

@@ -68,10 +68,14 @@ services:
       EDUCA_ADMIN_ROLES: SUPER_ADMIN,EDUCA_ADMIN
       TEMPLATE_MANAGER_ROLES: SCHOOL_ADMIN,RESP_RH,EDUCA_ADMIN,SUPER_ADMIN
       UPLOAD_DIR: /app/storage/uploads
-      ACADEMIC_YEAR_SERVICE_URL: http://annee-scolaire-service:8082
-      # Nom du conteneur du signature-service sur le reseau partage educa-net.
+      # Noms de conteneurs sur le reseau partage educa-net (a adapter aux vrais noms).
+      ACADEMIC_YEAR_SERVICE_URL: http://educa-dev-annee:8082
       SIGNATURE_SERVICE_URL: http://educa-dev-signature:8093
       COMMUNICATION_SERVICE_URL: http://communication-core-service:8087
+      ECOLE_SERVICE_URL: http://educa-dev-ecole:8080
+      ENSEIGNANT_SERVICE_URL: http://educa-dev-enseignant:8080
+      AFFECTATION_SERVICE_URL: http://educa-dev-affectation:3006
+      MANAGE_ACCOUNT_SERVICE_URL: http://educa-dev-account:8081
     ports:
       - '8091:8091'
     volumes:

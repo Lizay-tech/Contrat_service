@@ -167,7 +167,29 @@ Content-Type: application/json
 
 { "format": "html", "sampleData": { "employee_name": "Marie Claire", "school_name": "Collège Test" } }
 
-### Créer un contrat DEPUIS un modèle (génère rendered_body + PDF)
+### Aperçu d'agrégation (pré-remplissage auto depuis les services)
+GET {{baseUrl}}/contracts/aggregate/preview?employeeId=EMPLOYEE_UUID&templateId={{templateId}}
+Authorization: Bearer {{token}}
+
+### Créer un contrat DEPUIS un modèle AVEC agrégation (auto-remplissage école+employé)
+POST {{baseUrl}}/contracts/from-template
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "templateId": "{{templateId}}",
+  "employeeId": "EMPLOYEE_UUID",
+  "assignmentId": "ASSIGNMENT_UUID",
+  "startDate": "2026-09-01",
+  "amount": 25000,
+  "currency": "HTG",
+  "variables": {},
+  "parties": [
+    { "partyType": "PERSON", "roleInContract": "EMPLOYE", "fullName": "Jean Baptiste", "email": "jean@ecole.ht" }
+  ]
+}
+
+### Créer un contrat DEPUIS un modèle SANS agrégation (variables manuelles)
 POST {{baseUrl}}/contracts/from-template
 Authorization: Bearer {{token}}
 Content-Type: application/json

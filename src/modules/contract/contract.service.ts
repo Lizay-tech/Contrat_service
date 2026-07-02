@@ -23,6 +23,7 @@ import { getContractTypeById } from '../contract-type/contract-type.service';
 import { recordAudit, listAuditForEntity } from '../audit/audit.service';
 import { resolveRenderableVersion } from '../template/template.service';
 import { attachGeneratedPdf } from '../document/document.service';
+import { aggregateContext, contextToVariables } from '../aggregation/aggregation.service';
 import { assembleRenderContext } from '../../domain/template/context';
 import { findMissingRequired, renderTemplate } from '../../domain/template/render';
 import { htmlToPdf } from '../../infrastructure/pdf/html-pdf';
