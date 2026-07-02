@@ -16,7 +16,7 @@ Gère deux familles de contrats :
 ## 1. Stack
 
 Node.js + TypeScript (strict), Express, Sequelize (PostgreSQL), Redis (ioredis), RabbitMQ (amqplib),
-pino (logs structurés), zod (validation), pdfkit (génération PDF), umzug (migrations), Jest + Supertest.
+pino (logs structurés), zod (validation), **Puppeteer** (génération PDF HTML+CSS), umzug (migrations), Jest + Supertest.
 
 ## 2. Architecture (Clean Architecture)
 
@@ -168,7 +168,7 @@ génération PDF, et cycle de signature électronique (intégration `signature-s
 ## 14. Modèle de données (migrations 0003 & 0004)
 
 - `contract_templates` — `scope_owner` (PREDEFINED|SCHOOL), `contract_type_id`, `status` (DRAFT|PUBLISHED|ARCHIVED), `current_version`.
-- `template_versions` — `body` (HTML restreint + `{{tokens}}`), `header`, `footer`, `variables` (**jsonb**), `is_predefined`, `published_at`.
+- `template_versions` — `body` (HTML + `{{tokens}}`, rendu par Chromium), `header`, `footer`, `variables` (**jsonb**), `is_predefined`, `published_at`.
 - `clauses` / `template_clauses` — bibliothèque de clauses réutilisables (rendu par concaténation ordonnée).
 - `signature_requests` / `signatories` — suivi local des demandes et signataires.
 - `contracts` étendue : `template_id`, `template_version`, `rendered_body`.
@@ -186,9 +186,11 @@ génération PDF, et cycle de signature électronique (intégration `signature-s
 - **Variables → jsonb sur `template_versions`** (pas de table dédiée) : les variables sont
   intrinsèques à une version et évoluent avec son corps. Un **catalogue statique**
   ([variable-catalogue.ts](src/domain/template/variable-catalogue.ts), cf. spec A.2) fournit labels/types/`required`.
-- **PDF → pdfkit + mini-renderer HTML restreint** (`<h1-3>,<p>,<br>,<strong>,<em>,<ul><li>,<table>`) :
-  pas de Chromium headless → image Docker légère, rendu déterministe. Puppeteer serait
-  réservé à un HTML/CSS arbitraire.
+- **PDF → Puppeteer (Chromium headless)** : le corps rendu (le même HTML que `preview format:"html"`)
+  est enveloppé dans un document complet avec le CSS des contrats (`html-pdf.ts`) puis converti en
+  PDF fidèle (`page.pdf` A4, `printBackground`, marges). Navigateur **singleton** réutilisé.
+  Variables absentes → marqueur `[à compléter]` (`.var-missing`), jamais un trou.
+  En Docker : Chromium système (`apk add chromium`, `PUPPETEER_EXECUTABLE_PATH`).
 - **Rendu** : moteur pur ([render.ts](src/domain/template/render.ts)) + assemblage de contexte
   ([context.ts](src/domain/template/context.ts)) : dates en français, `salary_in_words`
   (montant en toutes lettres FR, [number-to-words.ts](src/domain/template/number-to-words.ts)),

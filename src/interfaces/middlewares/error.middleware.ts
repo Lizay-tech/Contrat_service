@@ -1,6 +1,10 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
-import { BaseError as SequelizeBaseError, UniqueConstraintError } from 'sequelize';
+import {
+  BaseError as SequelizeBaseError,
+  DatabaseError as SequelizeDatabaseError,
+  UniqueConstraintError,
+} from 'sequelize';
 import { AppError } from '../../shared/errors/app-error';
 import { sendError } from '../../shared/http/response';
 import { logger } from '../../shared/config/logger';
@@ -42,6 +46,18 @@ export function errorMiddleware(
   if (err instanceof UniqueConstraintError) {
     sendError(res, 409, 'CONFLICT', 'Ressource en conflit (contrainte d\'unicite)');
     return;
+  }
+
+  // Un identifiant mal forme (UUID invalide) => ressource introuvable (404),
+  // et non une erreur serveur (ex. GET/preview sur un id inexistant/malforme).
+  // On teste le code SQLSTATE 22P02 (invalid_text_representation), independant
+  // de la locale du serveur (le message peut etre traduit).
+  if (err instanceof SequelizeDatabaseError) {
+    const pgCode = (err as SequelizeDatabaseError & { parent?: { code?: string } }).parent?.code;
+    if (pgCode === '22P02' || /invalid input syntax for type uuid/i.test(err.message)) {
+      sendError(res, 404, 'NOT_FOUND', 'Ressource introuvable');
+      return;
+    }
   }
 
   if (err instanceof SequelizeBaseError) {

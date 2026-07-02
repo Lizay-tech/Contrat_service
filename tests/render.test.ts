@@ -8,10 +8,18 @@ import { amountInWords, numberToFrenchWords } from '../src/domain/template/numbe
 import { extractVariableKeys, resolveVariables } from '../src/domain/template/variable-catalogue';
 
 describe('Moteur de rendu de templates', () => {
-  it('substitue les jetons {{...}} et vide les variables absentes', () => {
+  it('substitue les jetons {{...}} et marque les variables absentes', () => {
     const body = 'Bonjour {{employee_name}}, poste {{employee_function}}. {{unknown}}';
     const out = renderTemplate(body, { employee_name: 'Jean', employee_function: 'Enseignant' });
-    expect(out).toBe('Bonjour Jean, poste Enseignant. ');
+    expect(out).toContain('Bonjour Jean, poste Enseignant.');
+    // La variable absente devient un marqueur visible, pas un trou.
+    expect(out).toContain('var-missing');
+    expect(out).toContain('[à compléter]');
+  });
+
+  it('permet un marqueur personnalise (ex. vide)', () => {
+    const out = renderTemplate('a {{x}} b', {}, { missingMarker: '' });
+    expect(out).toBe('a  b');
   });
 
   it('detecte les cles de variables', () => {

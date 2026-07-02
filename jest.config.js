@@ -6,6 +6,8 @@ module.exports = {
   testMatch: ['**/*.test.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    // Puppeteer v25 est ESM-only: on le stub en test (Chromium non lance).
+    '^puppeteer$': '<rootDir>/tests/mocks/puppeteer.ts',
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   testTimeout: 30000,

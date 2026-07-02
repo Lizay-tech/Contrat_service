@@ -1,4 +1,5 @@
 import { env } from '../../shared/config/env';
+import { logger } from '../../shared/config/logger';
 import {
   BusinessRuleError,
   ConflictError,
@@ -25,9 +26,13 @@ import { resolveRenderableVersion } from '../template/template.service';
 import { attachGeneratedPdf } from '../document/document.service';
 import { aggregateContext, contextToVariables } from '../aggregation/aggregation.service';
 import { assembleRenderContext } from '../../domain/template/context';
-import { findMissingRequired, renderTemplate } from '../../domain/template/render';
+import {
+  findMissingRequired,
+  formatDateFr,
+  missingVariableKeys,
+  renderTemplate,
+} from '../../domain/template/render';
 import { htmlToPdf } from '../../infrastructure/pdf/html-pdf';
-import { generateContractPdf } from '../../infrastructure/pdf/contract-pdf';
 import {
   ContractEvents,
   publishContractEvent,
@@ -426,6 +431,10 @@ export async function createContractFromTemplate(input: FromTemplateInput, ctx: 
     throw new ValidationError('Variables requises manquantes', missing);
   }
   const renderedBody = renderTemplate(version.body, context);
+  const missingVars = missingVariableKeys(version.body, context);
+  if (missingVars.length > 0) {
+    logger.info({ contractNumber, missing: missingVars }, '[from-template] variables absentes -> marqueur');
+  }
   const title = input.title ?? String(context.contract_title ?? template.name);
 
   const contract = await repo.createContract({
@@ -524,42 +533,58 @@ export interface ContractPdf {
   fileName: string;
 }
 
+/** Construit un corps HTML pour un contrat sans rendered_body (fiche structuree). */
+function buildStructuredHtml(
+  contract: ContractModel,
+  typeLabel: string,
+  parties: Array<{ role: string; fullName: string; email: string | null }>,
+): string {
+  const line = (label: string, value: string | number | null | undefined) =>
+    value != null && String(value) !== '' ? `<p><strong>${label} :</strong> ${value}</p>` : '';
+  const partiesHtml = parties.length
+    ? `<h2>Parties</h2><ul>${parties
+        .map((p) => `<li>[${p.role}] ${p.fullName}${p.email ? ` - ${p.email}` : ''}</li>`)
+        .join('')}</ul>`
+    : '';
+  return (
+    `<h1>${contract.title}</h1>` +
+    line('Numero', contract.contract_number) +
+    line('Type', typeLabel) +
+    line('Statut', contract.status) +
+    line('Date de debut', contract.start_date ? formatDateFr(contract.start_date) : null) +
+    line('Date de fin', contract.end_date ? formatDateFr(contract.end_date) : null) +
+    line(
+      'Montant',
+      contract.amount != null ? `${contract.amount.toFixed(2)} ${contract.currency}` : null,
+    ) +
+    partiesHtml
+  );
+}
+
 /** (Re)genere le PDF d'un contrat (corps rendu si disponible, sinon fiche structuree). */
 export async function getContractPdf(id: string): Promise<ContractPdf> {
   const contract = await repo.findContractById(id);
   if (!contract) throw new NotFoundError('Contrat introuvable');
 
-  let buffer: Buffer;
+  let html: string;
   if (contract.rendered_body) {
-    buffer = await htmlToPdf(contract.rendered_body);
+    html = contract.rendered_body;
   } else {
     const full = await repo.findContractWithRelations(id);
     const withRel = full as typeof full & {
-      contractType?: { label: string; scope: string };
-      parties?: Array<{
-        role_in_contract: string;
-        full_name: string;
-        party_type: string;
-        email: string | null;
-      }>;
+      contractType?: { label: string };
+      parties?: Array<{ role_in_contract: string; full_name: string; email: string | null }>;
     };
-    buffer = await generateContractPdf({
-      contractNumber: contract.contract_number,
-      title: contract.title,
-      typeLabel: withRel?.contractType?.label ?? '',
-      status: contract.status,
-      scope: withRel?.contractType?.scope ?? '',
-      startDate: contract.start_date,
-      endDate: contract.end_date,
-      amount: contract.amount,
-      currency: contract.currency,
-      parties: (withRel?.parties ?? []).map((p) => ({
+    html = buildStructuredHtml(
+      contract,
+      withRel?.contractType?.label ?? '',
+      (withRel?.parties ?? []).map((p) => ({
         role: p.role_in_contract,
         fullName: p.full_name,
-        type: p.party_type,
         email: p.email,
       })),
-    });
+    );
   }
+  const buffer = await htmlToPdf(html);
   return { buffer, fileName: `${contract.contract_number}.pdf` };
 }

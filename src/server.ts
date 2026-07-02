@@ -8,6 +8,7 @@ import {
   disconnectRabbitMQ,
 } from './infrastructure/messaging/rabbitmq';
 import { ensureStorageReady } from './infrastructure/storage/file-storage';
+import { closePdfBrowser } from './infrastructure/pdf/html-pdf';
 
 async function bootstrap(): Promise<void> {
   // Verifie la connexion DB (jamais de sync/alter au runtime).
@@ -37,6 +38,7 @@ async function bootstrap(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, '[shutdown] arret en cours');
     server.close();
+    await closePdfBrowser();
     await disconnectRabbitMQ();
     await disconnectRedis();
     await sequelize.close();

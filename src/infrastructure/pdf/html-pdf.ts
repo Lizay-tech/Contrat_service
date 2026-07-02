@@ -1,13 +1,16 @@
-import PDFDocument from 'pdfkit';
+import puppeteer, { type Browser } from 'puppeteer';
+import { env } from '../../shared/config/env';
+import { logger } from '../../shared/config/logger';
 
 /**
- * Rendu PDF d'un corps HTML RESTREINT (sous-ensemble volontairement limite).
+ * Generation PDF via Puppeteer (Chromium headless) - rendu HTML+CSS FIDELE.
  *
- * Choix pdfkit (vs puppeteer): pas de Chromium headless embarque (~300 Mo),
- * image Docker legere, rendu deterministe. Les templates de contrat utilisent
- * un HTML contraint : <h1>-<h3>, <p>, <br>, <strong>/<b>, <em>/<i>, <ul>/<li>,
- * <table>/<tr>/<td> (rendus en blocs simples). Un HTML/CSS arbitraire n'est pas
- * un objectif de ce module (ce serait le cas d'usage de puppeteer).
+ * Le corps rendu (le meme que le preview format:"html") est enveloppe dans un
+ * document HTML complet avec le CSS des contrats, puis converti en PDF. Les
+ * <img> (signatures DRAWN en data URL) sont supportes nativement.
+ *
+ * Une instance de navigateur est reutilisee (singleton) pour eviter de relancer
+ * Chromium a chaque appel; chaque page est fermee proprement apres usage.
  */
 export interface HtmlPdfOptions {
   title?: string;
@@ -15,112 +18,6 @@ export interface HtmlPdfOptions {
   footer?: string | null;
 }
 
-interface Segment {
-  text: string;
-  bold: boolean;
-  italic: boolean;
-}
-
-interface Block {
-  type: 'h1' | 'h2' | 'h3' | 'p' | 'li';
-  segments: Segment[];
-}
-
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&#39;/g, "'")
-    .replace(/&quot;/g, '"');
-}
-
-/** Decoupe le contenu inline d'un bloc en segments (gras/italique). */
-function parseInline(html: string): Segment[] {
-  const segments: Segment[] = [];
-  let bold = false;
-  let italic = false;
-  const re = /<\/?(strong|b|em|i)\s*>|<br\s*\/?\s*>|([^<]+)/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) !== null) {
-    const tag = m[1]?.toLowerCase();
-    const text = m[2];
-    if (tag) {
-      const closing = m[0].startsWith('</');
-      if (tag === 'b' || tag === 'strong') bold = !closing;
-      else if (tag === 'i' || tag === 'em') italic = !closing;
-    } else if (m[0].toLowerCase().startsWith('<br')) {
-      segments.push({ text: '\n', bold, italic });
-    } else if (text) {
-      const clean = decodeEntities(text).replace(/\s+/g, ' ');
-      if (clean) segments.push({ text: clean, bold, italic });
-    }
-  }
-  return segments;
-}
-
-/** Transforme le HTML restreint en une liste de blocs ordonnes. */
-function parseBlocks(html: string): Block[] {
-  const blocks: Block[] = [];
-  // Deroule les cellules de tableau en blocs paragraphe (mise en page simple).
-  const normalized = html
-    .replace(/<\/(td|th)>/gi, '<br/>')
-    .replace(/<\/tr>/gi, '')
-    .replace(/<(table|tbody|thead|tr|td|th)[^>]*>/gi, '')
-    .replace(/<\/(ul|ol)>/gi, '');
-
-  const re = /<(h1|h2|h3|p|li)[^>]*>([\s\S]*?)<\/\1>|<li[^>]*>([\s\S]*?)(?=<li|<\/ul|$)/gi;
-  let m: RegExpExecArray | null;
-  let matchedAny = false;
-  while ((m = re.exec(normalized)) !== null) {
-    matchedAny = true;
-    const tag = (m[1] ?? 'li').toLowerCase() as Block['type'];
-    const inner = m[2] ?? m[3] ?? '';
-    blocks.push({ type: tag, segments: parseInline(inner) });
-  }
-
-  // Repli: si aucun bloc structure, traiter tout le texte comme un paragraphe.
-  if (!matchedAny) {
-    const stripped = normalized.replace(/<[^>]+>/g, ' ');
-    blocks.push({ type: 'p', segments: parseInline(stripped) });
-  }
-  return blocks;
-}
-
-function writeBlock(doc: PDFKit.PDFDocument, block: Block): void {
-  const sizes: Record<Block['type'], number> = { h1: 18, h2: 15, h3: 13, p: 11, li: 11 };
-  const size = sizes[block.type];
-  doc.moveDown(0.4);
-
-  if (block.type === 'li') {
-    doc.font('Helvetica').fontSize(size).text('•  ', { continued: true });
-  }
-
-  let first = true;
-  for (const seg of block.segments) {
-    const isHeading = block.type.startsWith('h');
-    const font =
-      (seg.bold || isHeading) && seg.italic
-        ? 'Helvetica-BoldOblique'
-        : seg.bold || isHeading
-          ? 'Helvetica-Bold'
-          : seg.italic
-            ? 'Helvetica-Oblique'
-            : 'Helvetica';
-    const parts = seg.text.split('\n');
-    parts.forEach((part, idx) => {
-      if (part) {
-        doc.font(font).fontSize(size).text(part, { continued: true });
-      }
-      if (idx < parts.length - 1) doc.text('\n', { continued: false });
-      first = false;
-    });
-  }
-  if (!first) doc.text('', { continued: false });
-}
-
-/** Bloc de signature appose sur le PDF signe. */
 export interface SignatureBlock {
   name: string;
   role?: string | null;
@@ -130,91 +27,133 @@ export interface SignatureBlock {
   render?: string | null;
 }
 
-function renderPdf(build: (doc: PDFKit.PDFDocument) => void): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 56 });
-    const chunks: Buffer[] = [];
-    doc.on('data', (c: Buffer) => chunks.push(c));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
-    build(doc);
-    doc.end();
-  });
-}
+/** CSS des contrats, injecte systematiquement avant conversion. */
+const CONTRACT_CSS = `
+  * { box-sizing: border-box; }
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 12px; color: #1f2937; line-height: 1.55; margin: 0; }
+  .contract-brand { text-align: right; font-size: 11px; color: #6b7280; }
+  .contract-header { text-align: center; border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 16px; font-style: italic; color: #4b5563; }
+  h1 { font-size: 20px; text-align: center; margin: 14px 0; }
+  h2 { font-size: 15px; margin: 18px 0 6px; border-bottom: 1px solid #e5e7eb; padding-bottom: 3px; }
+  h3 { font-size: 13px; margin: 14px 0 4px; color: #111827; }
+  p { margin: 6px 0; text-align: justify; }
+  ul { margin: 6px 0 6px 18px; padding: 0; }
+  li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+  td, th { padding: 4px 6px; vertical-align: top; }
+  .var-missing { background: #FEF3C7; color: #92400E; padding: 0 2px; border-radius: 2px; }
+  .signatures { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 24px; }
+  .sign-zone { flex: 1 1 40%; min-width: 220px; border-top: 1px solid #9ca3af; padding-top: 6px; margin-top: 36px; }
+  .sign-zone .sig-name { font-weight: bold; }
+  .sign-zone .sig-role { font-size: 10px; color: #6b7280; }
+  .sign-zone .sig-text { font-family: 'Segoe Script', cursive; font-size: 22px; }
+  .sign-zone img { max-height: 60px; max-width: 200px; }
+  .sign-zone .sig-date { font-size: 10px; color: #6b7280; margin-top: 4px; }
+  .contract-footer { margin-top: 24px; text-align: center; font-size: 9px; color: #6b7280; font-style: italic; }
+`;
 
-function writeBody(doc: PDFKit.PDFDocument, body: string, options: HtmlPdfOptions): void {
-  if (options.header) {
-    doc.font('Helvetica-Oblique').fontSize(9).text(decodeEntities(stripTags(options.header)), {
-      align: 'center',
+let browserPromise: Promise<Browser> | null = null;
+
+async function getBrowser(): Promise<Browser> {
+  if (!browserPromise) {
+    const execPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    browserPromise = puppeteer.launch({
+      headless: true,
+      ...(execPath ? { executablePath: execPath } : {}),
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
-    doc.moveDown(0.5);
   }
-  for (const block of parseBlocks(body)) writeBlock(doc, block);
-  if (options.footer) {
-    doc.moveDown(1);
-    doc
-      .font('Helvetica-Oblique')
-      .fontSize(9)
-      .text(decodeEntities(stripTags(options.footer)), { align: 'center' });
+  return browserPromise;
+}
+
+/** Ferme le navigateur (appele au shutdown du service). */
+export async function closePdfBrowser(): Promise<void> {
+  if (browserPromise) {
+    try {
+      const browser = await browserPromise;
+      await browser.close();
+    } catch (err) {
+      logger.warn({ err }, '[pdf] fermeture navigateur');
+    }
+    browserPromise = null;
   }
 }
 
-/** Genere un PDF (Buffer) a partir d'un corps HTML restreint deja rendu. */
-export function htmlToPdf(body: string, options: HtmlPdfOptions = {}): Promise<Buffer> {
-  return renderPdf((doc) => writeBody(doc, body, options));
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
-function dataUrlToBuffer(dataUrl: string): Buffer | null {
-  const match = /^data:[^;]+;base64,(.+)$/i.exec(dataUrl.trim());
-  if (!match) return null;
+function wrapDocument(bodyHtml: string, options: HtmlPdfOptions): string {
+  const header = options.header
+    ? `<div class="contract-header">${options.header}</div>`
+    : '';
+  const footer = options.footer
+    ? `<div class="contract-footer">${options.footer}</div>`
+    : '';
+  return `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><style>${CONTRACT_CSS}</style></head>
+<body>
+<div class="contract-brand">EDUCA.TECH</div>
+${header}
+${bodyHtml}
+${footer}
+</body></html>`;
+}
+
+function signaturesHtml(signatures: SignatureBlock[]): string {
+  if (!signatures.length) return '';
+  const zones = signatures
+    .map((sig) => {
+      let sig_render = '';
+      if (sig.type === 'DRAWN' && sig.render) {
+        sig_render = `<img src="${sig.render}" alt="signature"/>`;
+      } else if (sig.render) {
+        sig_render = `<div class="sig-text">${escapeHtml(sig.render)}</div>`;
+      }
+      const role = sig.role ? `<div class="sig-role">${escapeHtml(sig.role)}</div>` : '';
+      return `<div class="sign-zone">
+        <div class="sig-name">${escapeHtml(sig.name)}</div>
+        ${role}
+        ${sig_render}
+        <div class="sig-date">Signe le ${escapeHtml(sig.date)}</div>
+      </div>`;
+    })
+    .join('');
+  return `<h2>Signatures</h2><div class="signatures">${zones}</div>`;
+}
+
+async function renderToPdf(fullHtml: string): Promise<Buffer> {
+  const browser = await getBrowser();
+  const page = await browser.newPage();
   try {
-    return Buffer.from(match[1] as string, 'base64');
-  } catch {
-    return null;
+    // HTML autonome (CSS inline, images en data URL) -> 'load' attend le rendu
+    // complet (images comprises) sans dependre du reseau (bloque de toute facon).
+    await page.setContent(fullHtml, { waitUntil: 'load' });
+    const pdf = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '20mm', bottom: '20mm', left: '16mm', right: '16mm' },
+    });
+    return Buffer.from(pdf);
+  } finally {
+    await page.close();
   }
 }
 
-/**
- * Genere le PDF SIGNE: le corps rendu suivi d'une section "Signatures" ou chaque
- * signataire est appose (image DRAWN embarquee, ou texte stylise TEXT) avec nom,
- * role et date.
- */
+/** Genere un PDF a partir d'un corps HTML rendu (variables deja substituees). */
+export function htmlToPdf(body: string, options: HtmlPdfOptions = {}): Promise<Buffer> {
+  return renderToPdf(wrapDocument(body, options));
+}
+
+/** Genere le PDF SIGNE: corps + section "Signatures" (images/texte apposes). */
 export function htmlToPdfWithSignatures(
   body: string,
   options: HtmlPdfOptions,
   signatures: SignatureBlock[],
 ): Promise<Buffer> {
-  return renderPdf((doc) => {
-    writeBody(doc, body, options);
-
-    doc.moveDown(2);
-    doc.font('Helvetica-Bold').fontSize(14).text('Signatures');
-    doc.moveDown(0.5);
-
-    for (const sig of signatures) {
-      doc.font('Helvetica-Bold').fontSize(11).text(sig.name);
-      if (sig.role) doc.font('Helvetica').fontSize(9).text(sig.role);
-
-      if (sig.type === 'DRAWN' && sig.render) {
-        const buf = dataUrlToBuffer(sig.render);
-        if (buf) {
-          try {
-            doc.image(buf, { fit: [180, 60] });
-          } catch {
-            doc.font('Helvetica-Oblique').fontSize(10).text('[signature]');
-          }
-        }
-      } else if (sig.render) {
-        // Signature texte stylisee (police cursive non embarquee -> italique).
-        doc.font('Helvetica-Oblique').fontSize(20).text(sig.render);
-      }
-
-      doc.font('Helvetica').fontSize(9).text(`Signe le ${sig.date}`);
-      doc.moveDown(1);
-    }
-  });
-}
-
-function stripTags(s: string): string {
-  return s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return renderToPdf(wrapDocument(`${body}${signaturesHtml(signatures)}`, options));
 }

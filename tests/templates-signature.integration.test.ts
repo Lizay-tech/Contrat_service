@@ -127,6 +127,40 @@ describe('Modeles de contrat (templates)', () => {
     expect(res.body.data.html).toContain('Marie Claire');
     expect(res.body.data.html).not.toContain('{{employee_name}}');
   });
+
+  it('marque les variables non fournies avec [a completer] (pas de trou)', async () => {
+    const id = await predefinedTemplateId(admin(), 'cdi');
+    const res = await request(app)
+      .post(`${API}/templates/${id}/preview`)
+      .set('Authorization', bearer(admin()))
+      .send({ sampleData: { employee_name: 'Marie Claire' } }); // school_name absent
+    expect(res.status).toBe(200);
+    expect(res.body.data.html).toContain('var-missing');
+    expect(res.body.data.html).toContain('Marie Claire');
+  });
+
+  it('renvoie 404 (pas DB_ERROR) pour un templateId mal forme', async () => {
+    const detail = await request(app)
+      .get(`${API}/templates/not-a-uuid`)
+      .set('Authorization', bearer(admin()));
+    expect(detail.status).toBe(404);
+    const preview = await request(app)
+      .post(`${API}/templates/not-a-uuid/preview`)
+      .set('Authorization', bearer(admin()))
+      .send({});
+    expect(preview.status).toBe(404);
+  });
+
+  it('genere un PDF de preview bien forme (Puppeteer)', async () => {
+    const id = await predefinedTemplateId(admin(), 'cdi');
+    const res = await request(app)
+      .post(`${API}/templates/${id}/preview`)
+      .set('Authorization', bearer(admin()))
+      .send({ format: 'pdf', sampleData: { employee_name: 'Marie Claire' } });
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.body.slice(0, 4).toString()).toBe('%PDF');
+  });
 });
 
 describe('Contrat depuis template + PDF', () => {
