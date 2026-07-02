@@ -120,35 +120,98 @@ function writeBlock(doc: PDFKit.PDFDocument, block: Block): void {
   if (!first) doc.text('', { continued: false });
 }
 
-/** Genere un PDF (Buffer) a partir d'un corps HTML restreint deja rendu. */
-export function htmlToPdf(body: string, options: HtmlPdfOptions = {}): Promise<Buffer> {
+/** Bloc de signature appose sur le PDF signe. */
+export interface SignatureBlock {
+  name: string;
+  role?: string | null;
+  date: string;
+  type: 'TEXT' | 'DRAWN';
+  /** data URL (image DRAWN) ou texte stylise (TEXT). */
+  render?: string | null;
+}
+
+function renderPdf(build: (doc: PDFKit.PDFDocument) => void): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 56 });
     const chunks: Buffer[] = [];
     doc.on('data', (c: Buffer) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
-
-    if (options.header) {
-      doc.font('Helvetica-Oblique').fontSize(9).text(decodeEntities(stripTags(options.header)), {
-        align: 'center',
-      });
-      doc.moveDown(0.5);
-    }
-
-    for (const block of parseBlocks(body)) {
-      writeBlock(doc, block);
-    }
-
-    if (options.footer) {
-      doc.moveDown(1);
-      doc
-        .font('Helvetica-Oblique')
-        .fontSize(9)
-        .text(decodeEntities(stripTags(options.footer)), { align: 'center' });
-    }
-
+    build(doc);
     doc.end();
+  });
+}
+
+function writeBody(doc: PDFKit.PDFDocument, body: string, options: HtmlPdfOptions): void {
+  if (options.header) {
+    doc.font('Helvetica-Oblique').fontSize(9).text(decodeEntities(stripTags(options.header)), {
+      align: 'center',
+    });
+    doc.moveDown(0.5);
+  }
+  for (const block of parseBlocks(body)) writeBlock(doc, block);
+  if (options.footer) {
+    doc.moveDown(1);
+    doc
+      .font('Helvetica-Oblique')
+      .fontSize(9)
+      .text(decodeEntities(stripTags(options.footer)), { align: 'center' });
+  }
+}
+
+/** Genere un PDF (Buffer) a partir d'un corps HTML restreint deja rendu. */
+export function htmlToPdf(body: string, options: HtmlPdfOptions = {}): Promise<Buffer> {
+  return renderPdf((doc) => writeBody(doc, body, options));
+}
+
+function dataUrlToBuffer(dataUrl: string): Buffer | null {
+  const match = /^data:[^;]+;base64,(.+)$/i.exec(dataUrl.trim());
+  if (!match) return null;
+  try {
+    return Buffer.from(match[1] as string, 'base64');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Genere le PDF SIGNE: le corps rendu suivi d'une section "Signatures" ou chaque
+ * signataire est appose (image DRAWN embarquee, ou texte stylise TEXT) avec nom,
+ * role et date.
+ */
+export function htmlToPdfWithSignatures(
+  body: string,
+  options: HtmlPdfOptions,
+  signatures: SignatureBlock[],
+): Promise<Buffer> {
+  return renderPdf((doc) => {
+    writeBody(doc, body, options);
+
+    doc.moveDown(2);
+    doc.font('Helvetica-Bold').fontSize(14).text('Signatures');
+    doc.moveDown(0.5);
+
+    for (const sig of signatures) {
+      doc.font('Helvetica-Bold').fontSize(11).text(sig.name);
+      if (sig.role) doc.font('Helvetica').fontSize(9).text(sig.role);
+
+      if (sig.type === 'DRAWN' && sig.render) {
+        const buf = dataUrlToBuffer(sig.render);
+        if (buf) {
+          try {
+            doc.image(buf, { fit: [180, 60] });
+          } catch {
+            doc.font('Helvetica-Oblique').fontSize(10).text('[signature]');
+          }
+        }
+      } else if (sig.render) {
+        // Signature texte stylisee (police cursive non embarquee -> italique).
+        doc.font('Helvetica-Oblique').fontSize(20).text(sig.render);
+      }
+
+      doc.font('Helvetica').fontSize(9).text(`Signe le ${sig.date}`);
+      doc.moveDown(1);
+    }
   });
 }
 

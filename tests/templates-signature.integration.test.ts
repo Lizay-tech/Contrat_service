@@ -1,6 +1,29 @@
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import type { Express } from 'express';
+
+// Mock du client signature-service (pas de 8093 live en test).
+jest.mock('../src/infrastructure/clients/signature.client', () => {
+  class SignatureServiceError extends Error {}
+  const defaultSig = {
+    id: 'sig-default-1',
+    display_name: 'Ma signature',
+    signature_type: 'TEXT',
+    signature_text: 'J. Baptiste',
+    is_default: true,
+    status: 'ACTIVE',
+  };
+  return {
+    __esModule: true,
+    SignatureServiceError,
+    listUserSignatures: jest.fn(async () => [defaultSig]),
+    getDefaultSignature: jest.fn(async () => defaultSig),
+    getSignature: jest.fn(async () => defaultSig),
+    getSignatureImage: jest.fn(async () => null),
+    recordUsage: jest.fn(async () => 'usage-1'),
+  };
+});
+
 import { createApp } from '../src/app';
 import {
   bearer,
@@ -9,6 +32,7 @@ import {
   signToken,
   truncateBusinessTables,
 } from './helpers';
+import * as sigClient from '../src/infrastructure/clients/signature.client';
 
 const API = '/api/v1';
 let app: Express;
@@ -179,9 +203,7 @@ describe('Cycle de signature -> ACTIVE', () => {
     return id;
   }
 
-  it('passe le contrat en ACTIVE quand tous les signataires ont signe', async () => {
-    const contractId = await createApprovedContract();
-
+  async function openRequest(contractId: string): Promise<{ requestId: string; signatories: Array<{ id: string }> }> {
     const reqRes = await request(app)
       .post(`${API}/contracts/${contractId}/signature-requests`)
       .set('Authorization', bearer(admin()))
@@ -193,8 +215,42 @@ describe('Cycle de signature -> ACTIVE', () => {
         ],
       });
     expect(reqRes.status).toBe(201);
-    const requestId = reqRes.body.data.id;
-    const signatories = reqRes.body.data.signatories;
+    return { requestId: reqRes.body.data.id, signatories: reqRes.body.data.signatories };
+  }
+
+  it('liste les signatures disponibles avec le flag par defaut', async () => {
+    const contractId = await createApprovedContract();
+    const res = await request(app)
+      .get(`${API}/contracts/${contractId}/available-signatures`)
+      .set('Authorization', bearer(admin()));
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].isDefault).toBe(true);
+  });
+
+  it('refuse la signature sans confirmation (422)', async () => {
+    const contractId = await createApprovedContract();
+    const { requestId, signatories } = await openRequest(contractId);
+    const res = await request(app)
+      .post(`${API}/signature-requests/${requestId}/sign`)
+      .set('Authorization', bearer(admin()))
+      .send({ signatoryId: signatories[0].id }); // confirmed absent
+    expect(res.status).toBe(422);
+  });
+
+  it('renvoie 409 si aucune signature par defaut', async () => {
+    (sigClient.getDefaultSignature as jest.Mock).mockResolvedValueOnce(null);
+    const contractId = await createApprovedContract();
+    const { requestId, signatories } = await openRequest(contractId);
+    const res = await request(app)
+      .post(`${API}/signature-requests/${requestId}/sign`)
+      .set('Authorization', bearer(admin()))
+      .send({ signatoryId: signatories[0].id, confirmed: true });
+    expect(res.status).toBe(409);
+  });
+
+  it('signe avec la signature par defaut, appose un doc SIGNE et passe ACTIVE', async () => {
+    const contractId = await createApprovedContract();
+    const { requestId, signatories } = await openRequest(contractId);
 
     // Le contrat est passe en PENDING_SIGNATURE
     const midStatus = await request(app)
@@ -202,18 +258,28 @@ describe('Cycle de signature -> ACTIVE', () => {
       .set('Authorization', bearer(admin()));
     expect(midStatus.body.data.status).toBe('PENDING_SIGNATURE');
 
-    // Signature des deux
+    // Signature des deux (confirmée, signature par défaut)
     for (const s of signatories) {
       const sign = await request(app)
         .post(`${API}/signature-requests/${requestId}/sign`)
         .set('Authorization', bearer(admin()))
-        .send({ signatoryId: s.id, type: 'TEXT', data: `${s.name} signature` });
+        .send({ signatoryId: s.id, confirmed: true });
       expect(sign.status).toBe(200);
+      expect(sign.body.data.signedDocumentId).toBeTruthy();
     }
+
+    // L'usage a été enregistré côté signature-service
+    expect(sigClient.recordUsage as jest.Mock).toHaveBeenCalled();
 
     const finalStatus = await request(app)
       .get(`${API}/contracts/${contractId}`)
       .set('Authorization', bearer(admin()));
     expect(finalStatus.body.data.status).toBe('ACTIVE');
+
+    // Un document SIGNE a bien été généré
+    const signedDocs = finalStatus.body.data.documents.filter(
+      (d: { type: string }) => d.type === 'SIGNE',
+    );
+    expect(signedDocs.length).toBeGreaterThanOrEqual(1);
   });
 });

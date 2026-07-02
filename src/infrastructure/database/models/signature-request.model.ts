@@ -77,6 +77,8 @@ export class SignatoryModel extends Model<
   declare ip: string | null;
   declare device: string | null;
   declare signature_ref: string | null;
+  declare signature_render: string | null;
+  declare signed_document_id: string | null;
   declare created_at: CreationOptional<Date>;
   declare updated_at: CreationOptional<Date>;
 }
@@ -101,6 +103,8 @@ SignatoryModel.init(
     ip: { type: DataTypes.STRING(64), allowNull: true },
     device: { type: DataTypes.STRING(512), allowNull: true },
     signature_ref: { type: DataTypes.STRING(255), allowNull: true },
+    signature_render: { type: DataTypes.TEXT, allowNull: true },
+    signed_document_id: { type: DataTypes.UUID, allowNull: true },
     created_at: DataTypes.DATE,
     updated_at: DataTypes.DATE,
   },

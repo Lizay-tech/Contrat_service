@@ -207,23 +207,27 @@ Content-Type: application/json
   ]
 }
 
+### Signatures disponibles de l'utilisateur (via signature-service), flag par défaut
+GET {{baseUrl}}/contracts/{{contractId}}/available-signatures
+Authorization: Bearer {{token}}
+
 ### Statut des signatures d'un contrat
 GET {{baseUrl}}/contracts/{{contractId}}/signatures
 Authorization: Bearer {{token}}
 
-### Signer avec un paraphe du signature-service (recommandé). Tous signés → ACTIVE
+### Signer avec la signature PAR DÉFAUT (confirmation obligatoire). Tous signés → ACTIVE
 POST {{baseUrl}}/signature-requests/{{requestId}}/sign
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "signatoryId": "{{signatoryId}}", "signatureId": "ID_SIGNATURE_DU_SERVICE_8093" }
+{ "signatoryId": "{{signatoryId}}", "confirmed": true }
 
-### Signer inline (signataire externe sans compte)
+### Signer avec une signature CHOISIE (signatureId du service 8093)
 POST {{baseUrl}}/signature-requests/{{requestId}}/sign
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "signatoryId": "{{signatoryId}}", "type": "TEXT", "data": "Jean Baptiste" }
+{ "signatoryId": "{{signatoryId}}", "confirmed": true, "signatureId": "ID_SIGNATURE_8093" }
 
 ### Relancer un signataire
 POST {{baseUrl}}/signature-requests/{{requestId}}/remind

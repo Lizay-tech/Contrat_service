@@ -34,6 +34,10 @@ export async function getContractSignatures(req: Request, res: Response): Promis
   sendData(res, await service.getContractSignatures(req.params.id as string));
 }
 
+export async function getAvailableSignatures(req: Request, res: Response): Promise<void> {
+  sendData(res, await service.getAvailableSignatures(req.params.id as string, ctxOf(req)));
+}
+
 export async function postSign(req: Request, res: Response): Promise<void> {
   const input = signSchema.parse(req.body);
   const result = await service.sign(req.params.requestId as string, input, ctxOf(req));

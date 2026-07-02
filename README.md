@@ -222,24 +222,42 @@ génération PDF, et cycle de signature électronique (intégration `signature-s
 | POST | `/contracts/from-template` | `{ templateId, variables, parties, startDate, … }` → DRAFT + `rendered_body` + PDF généré |
 | GET | `/contracts/:id/pdf` | (Re)génère et renvoie le PDF |
 
-**Signature électronique** :
+**Signature électronique** (via signature-service 8093, signature par défaut + confirmation) :
 
 | Méthode | Route | Description |
 |--------|-------|-------------|
 | POST | `/contracts/:id/signature-requests` | `{ signatories[], mode: SEQUENTIAL\|PARALLEL, deadline? }` → passe APPROVED→PENDING_SIGNATURE |
+| GET | `/contracts/:id/available-signatures` | Signatures de l'utilisateur courant (via 8093) avec le flag `isDefault` |
 | GET | `/contracts/:id/signatures` | Statut par signataire |
-| POST | `/signature-requests/:requestId/sign` | `{ signatoryId, signatureId }` (paraphe du signature-service) **ou** `{ signatoryId, type, data }` (inline externe) |
+| POST | `/signature-requests/:requestId/sign` | `{ signatoryId, confirmed: true, signatureId? }` |
 | POST | `/signature-requests/:requestId/remind` | `{ signatoryId }` — relance (intention de notification) |
 
-**Intégration signature-service** : quand `signatureId` est fourni, contrat-service **valide**
-la signature (`GET /api/signatures/:id`), récupère le paraphe (`/image`, best-effort) et
-**journalise l'utilisation** (`POST /api/signature-usages`) sur le service, en propageant le JWT.
-Le cas inline (`type`+`data`) couvre les signataires externes sans compte.
+**Flux de signature** (`POST …/sign`) :
+1. **Confirmation obligatoire** : `confirmed !== true` → **422**.
+2. Résolution de la signature : `signatureId` fourni, sinon **signature par défaut** de l'utilisateur
+   (`getDefaultSignature`). Aucune signature par défaut → **409** (invitation à en définir une).
+3. Anti-usurpation : la signature (et le signataire s'il a un compte) doit appartenir à l'utilisateur courant.
+4. **Apposition PDF** : récupération de l'image (DRAWN) ou du texte (TEXT), **régénération du PDF**
+   avec une section « Signatures » (toutes les signatures recueillies), stocké en **document `SIGNE`**
+   (sha256, version incrémentée). Le rendu de chaque signature est persisté (`signatories.signature_render`)
+   pour régénérer sans re-solliciter chaque signataire.
+5. Persistance du signataire (`SIGNED`, `signature_ref`, `ip`, `device`, `signed_at`) **+**
+   `POST /api/signature-usages` côté 8093 (`{ document_type:'CONTRACT', document_id, used_by, signed_at }`).
+6. Le tout dans la transaction du `tenantHandler` : si l'apposition/persistance échoue, **rien n'est signé**.
+7. Tous signés → transition auto **→ ACTIVE**, `contract.signed`, audit.
 
-Quand **tous** les signataires ont signé → transition automatique **→ ACTIVE**, événement
-`contract.signed`, audit. Les intentions de notification sont publiées sur RabbitMQ
-(`contract.signature_requested`, `contract.signature_reminder`) — pas d'appel direct à
-`communication-core` en Phase 2.
+**Client 8093** ([signature.client.ts](src/infrastructure/clients/signature.client.ts)) : propage le
+**JWT de l'appelant** + l'en-tête **`X-Academic-Year-Id`** (année scolaire du contrat) ;
+méthodes `listUserSignatures`, `getDefaultSignature`, `getSignature`, `getSignatureImage`, `recordUsage`.
+Service injoignable → **502** explicite (pas de crash silencieux).
+
+**Réseau Docker** : contrat-service et signature-service (`educa-dev-signature`) doivent partager le
+réseau externe **`educa-net`**. Prérequis une seule fois :
+```bash
+docker network create educa-net
+```
+`SIGNATURE_SERVICE_URL=http://educa-dev-signature:8093` (déjà réglé dans docker-compose).
+Vérifier depuis le conteneur : `docker exec contrat_service wget -qO- http://educa-dev-signature:8093/api/signatures`.
 
 ## 17. Modèles prédéfinis seedés (scope PREDEFINED, clonables)
 

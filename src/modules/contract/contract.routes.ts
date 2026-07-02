@@ -20,6 +20,7 @@ import {
   postDocument,
 } from '../document/document.controller';
 import {
+  getAvailableSignatures,
   getContractSignatures,
   postSignatureRequest,
 } from '../signature/signature.controller';
@@ -47,6 +48,7 @@ router.get('/:id/documents/:docId', tenantHandler(getDocument));
 router.get('/:id/history', tenantHandler(getHistory));
 
 // Signature electronique (scope contrat).
+router.get('/:id/available-signatures', tenantHandler(getAvailableSignatures));
 router.post('/:id/signature-requests', tenantHandler(postSignatureRequest));
 router.get('/:id/signatures', tenantHandler(getContractSignatures));
 

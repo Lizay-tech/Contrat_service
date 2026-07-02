@@ -84,7 +84,16 @@ export const env = {
     academicYearUrl: process.env.ACADEMIC_YEAR_SERVICE_URL ?? 'http://localhost:8082',
     signatureUrl: process.env.SIGNATURE_SERVICE_URL ?? 'http://localhost:8093',
     communicationUrl: process.env.COMMUNICATION_SERVICE_URL ?? 'http://localhost:8087',
+    ecoleUrl: process.env.ECOLE_SERVICE_URL ?? 'http://localhost:3001',
+    personnelUrl: process.env.ENSEIGNANT_SERVICE_URL ?? 'http://localhost:8083',
+    affectationUrl: process.env.AFFECTATION_SERVICE_URL ?? 'http://localhost:8084',
+    manageAccountUrl: process.env.MANAGE_ACCOUNT_SERVICE_URL ?? 'http://localhost:8081',
+    // Optionnels (peuvent ne pas exister) -> fallback local si absents.
+    rhUrl: process.env.RH_SERVICE_URL ?? '',
+    configurationUrl: process.env.CONFIGURATION_SERVICE_URL ?? '',
   },
+  // TTL (secondes) du cache Redis des donnees stables inter-services.
+  aggregationCacheTtl: int('AGGREGATION_CACHE_TTL', 300),
 } as const;
 
 export type Env = typeof env;

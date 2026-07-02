@@ -1,49 +1,31 @@
 import { env } from '../../shared/config/env';
-import { logger } from '../../shared/config/logger';
-import { redis } from '../redis/redis.client';
+import { getJson } from './http-client';
 
 /**
- * Client annee-scolaire-service (8082). Recupere l'annee scolaire active pour
- * un tenant et la met en cache Redis (TTL). En cas d'indisponibilite, retourne
- * null: la creation de contrat n'est pas bloquee (annee_scolaire_id nullable).
+ * Client years-service (annee scolaire). Route reelle: GET /academic-years/active
+ * (publique, systeme-wide, sans schoolId). Champ `name` = "2025-2026".
  */
-const CACHE_TTL_SECONDS = 300;
-
-function cacheKey(tenantSchoolId: string): string {
-  return `academic-year:active:${tenantSchoolId}`;
+export interface AcademicYear {
+  id: string;
+  name?: string;
+  startYear?: number;
+  endYear?: number;
+  status?: string;
+  isActive?: boolean;
 }
 
-export async function getActiveAcademicYearId(
-  tenantSchoolId: string,
-): Promise<string | null> {
-  const key = cacheKey(tenantSchoolId);
-  // Ne consulter le cache que si Redis est effectivement connecte (evite de
-  // bloquer sur la file hors-ligne quand Redis est indisponible).
-  const redisReady = redis.status === 'ready';
-  if (redisReady) {
-    try {
-      const cached = await redis.get(key);
-      if (cached) return cached === 'null' ? null : cached;
-    } catch (err) {
-      logger.warn({ err }, '[academic-year] lecture cache impossible');
-    }
-  }
+export async function getActiveAcademicYear(
+  token?: string | null,
+): Promise<AcademicYear | null> {
+  return getJson<AcademicYear>(`${env.clients.academicYearUrl}/academic-years/active`, {
+    token: token ?? null,
+    cacheKey: 'academic-year:active',
+    ttlSeconds: env.aggregationCacheTtl,
+  });
+}
 
-  try {
-    const url = `${env.clients.academicYearUrl}/api/v1/academic-years/active?schoolId=${tenantSchoolId}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) {
-      logger.warn({ status: res.status }, '[academic-year] reponse non-OK');
-      return null;
-    }
-    const body = (await res.json()) as { data?: { id?: string } };
-    const id = body?.data?.id ?? null;
-    if (redisReady) {
-      await redis.set(key, id ?? 'null', 'EX', CACHE_TTL_SECONDS).catch(() => undefined);
-    }
-    return id;
-  } catch (err) {
-    logger.warn({ err }, '[academic-year] service indisponible, annee non resolue');
-    return null;
-  }
+/** Id de l'annee active (utilise par le middleware). Null si indisponible. */
+export async function getActiveAcademicYearId(_tenantSchoolId?: string): Promise<string | null> {
+  const year = await getActiveAcademicYear();
+  return year?.id ?? null;
 }

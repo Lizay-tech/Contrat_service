@@ -16,11 +16,14 @@ import type { RequestContext } from './contract.service';
 function buildContext(req: Request): RequestContext {
   const auth = req.auth as AuthContext | undefined;
   if (!auth || !req.tenantSchoolId) throw new UnauthorizedError();
+  const header = req.headers.authorization;
+  const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : null;
   return {
     auth,
     tenantSchoolId: req.tenantSchoolId,
     academicYearId: req.academicYearId ?? null,
     ip: req.ip ?? null,
+    token,
   };
 }
 

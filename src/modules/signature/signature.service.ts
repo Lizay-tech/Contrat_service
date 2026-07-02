@@ -1,10 +1,14 @@
 import {
   BusinessRuleError,
   ConflictError,
+  ExternalServiceError,
+  ForbiddenError,
   NotFoundError,
+  UnauthorizedError,
 } from '../../shared/errors/app-error';
 import {
   ContractStatus,
+  DocumentType,
   SignatoryStatus,
   SignatureMode,
   SignatureRequestStatus,
@@ -14,12 +18,22 @@ import {
 import { recordAudit } from '../audit/audit.service';
 import { publish } from '../../infrastructure/messaging/rabbitmq';
 import {
+  getDefaultSignature,
   getSignature,
-  getSignatureImageBase64,
+  getSignatureImage,
+  listUserSignatures,
   recordUsage,
+  SignatureServiceError,
+  type RemoteSignature,
 } from '../../infrastructure/clients/signature.client';
+import {
+  htmlToPdfWithSignatures,
+  type SignatureBlock,
+} from '../../infrastructure/pdf/html-pdf';
+import { formatDateFr } from '../../domain/template/render';
 import { findContractById } from '../contract/contract.repository';
 import { transitionStatus, type RequestContext } from '../contract/contract.service';
+import { attachGeneratedPdf } from '../document/document.service';
 import * as repo from './signature.repository';
 import type {
   CreateSignatureRequestInput,
@@ -27,6 +41,7 @@ import type {
   SignInput,
 } from './signature.validator';
 import type {
+  ContractModel,
   SignatoryModel,
   SignatureRequestModel,
 } from '../../infrastructure/database/models';
@@ -169,9 +184,62 @@ export async function getContractSignatures(contractId: string) {
   return out;
 }
 
+function toSignatureType(remote: RemoteSignature): SignatureType {
+  return remote.signature_type === 'DRAWN' ? SignatureType.DRAWN : SignatureType.TEXT;
+}
+
 /**
- * Appose la signature d'un signataire. En mode SEQUENTIAL, respecte l'ordre.
- * Quand tous ont signe: demande COMPLETED + contrat -> ACTIVE (+ contract.signed).
+ * Signatures de l'utilisateur courant disponibles pour ce contrat (via le
+ * signature-service), avec le flag "par defaut".
+ */
+export async function getAvailableSignatures(contractId: string, ctx: SignatureContext) {
+  if (!ctx.token) throw new UnauthorizedError();
+  const contract = await findContractById(contractId);
+  if (!contract) throw new NotFoundError('Contrat introuvable');
+
+  try {
+    const signatures = await listUserSignatures(ctx.token, contract.annee_scolaire_id);
+    return signatures.map((s) => ({
+      id: s.id,
+      displayName: s.display_name ?? null,
+      type: s.signature_type ?? null,
+      status: s.status ?? null,
+      isDefault: s.is_default === true,
+    }));
+  } catch (err) {
+    if (err instanceof SignatureServiceError) throw new ExternalServiceError(err.message);
+    throw err;
+  }
+}
+
+/** Construit un corps HTML minimal si le contrat n'a pas de rendered_body. */
+function fallbackBody(contract: ContractModel): string {
+  return (
+    `<h1>${contract.title}</h1>` +
+    `<p>Contrat ${contract.contract_number}` +
+    (contract.start_date ? ` a compter du ${formatDateFr(contract.start_date)}` : '') +
+    `.</p>`
+  );
+}
+
+/** Bloc d'apposition pour un signataire deja signe (rendu persiste). */
+function blockFor(s: SignatoryModel): SignatureBlock {
+  return {
+    name: s.name,
+    role: s.email,
+    date: s.signed_at ? formatDateFr(s.signed_at) : '',
+    type: s.signature_type ?? SignatureType.TEXT,
+    render: s.signature_render,
+  };
+}
+
+/**
+ * Signe un contrat avec la signature choisie (ou par defaut) de l'utilisateur.
+ * Confirmation obligatoire. Appose la signature sur le PDF (nouveau document
+ * SIGNE), persiste, journalise l'usage cote 8093, et bascule ACTIVE au complet.
+ *
+ * Tout se deroule dans la transaction du tenantHandler: si l'apposition PDF ou la
+ * persistance echoue, le signataire N'EST PAS marque signe (rollback).
  */
 export async function sign(requestId: string, input: SignInput, ctx: SignatureContext) {
   const request = await repo.findRequestById(requestId);
@@ -180,10 +248,20 @@ export async function sign(requestId: string, input: SignInput, ctx: SignatureCo
     throw new ConflictError(`La demande n'est plus active (statut ${request.status})`);
   }
 
+  // Confirmation explicite obligatoire.
+  if (input.confirmed !== true) {
+    throw new BusinessRuleError('Confirmation requise pour signer');
+  }
+  if (!ctx.token) throw new UnauthorizedError();
+
   const signatory = await repo.findSignatory(requestId, input.signatoryId);
   if (!signatory) throw new NotFoundError('Signataire introuvable');
   if (signatory.status === SignatoryStatus.SIGNED) {
     throw new ConflictError('Ce signataire a deja signe');
+  }
+  // Anti-usurpation: si le signataire est rattache a un compte, ce doit etre le signataire.
+  if (signatory.user_id && signatory.user_id !== ctx.auth.userId) {
+    throw new ForbiddenError('Vous ne pouvez pas signer a la place d\'un autre signataire');
   }
 
   const all = await repo.listSignatories(requestId);
@@ -194,47 +272,94 @@ export async function sign(requestId: string, input: SignInput, ctx: SignatureCo
     }
   }
 
-  // Determination du type + reference de la signature.
-  let signatureType: SignatureType;
-  let signatureRef: string | null = null;
-  let usageId: string | null = null;
+  const contract = await findContractById(request.contract_id);
+  if (!contract) throw new NotFoundError('Contrat introuvable');
+  const academicYearId = contract.annee_scolaire_id;
 
-  if (input.signatureId) {
-    // Signature reutilisable du signature-service: on la valide, on trace l'usage.
-    if (!ctx.token) {
-      throw new BusinessRuleError('Jeton d\'authentification requis pour utiliser une signature du signature-service');
-    }
-    const remote = await getSignature(input.signatureId, ctx.token);
-    if (!remote) {
-      throw new BusinessRuleError('Signature introuvable dans le signature-service');
-    }
-    signatureType =
-      remote.signatureType === 'DRAWN' ? SignatureType.DRAWN : SignatureType.TEXT;
-    signatureRef = input.signatureId;
-    // Apposition/paraphe: recuperation best-effort de l'image (pour un futur
-    // embarquement dans le PDF) et journalisation de l'utilisation.
-    await getSignatureImageBase64(input.signatureId, ctx.token);
-    usageId = await recordUsage(
-      {
-        signatureId: input.signatureId,
-        contractId: request.contract_id,
-        signatoryId: signatory.id,
-        signatoryName: signatory.name,
-      },
-      ctx.token,
+  // 1) Resoudre la signature a utiliser (choisie ou par defaut).
+  let remote: RemoteSignature | null;
+  try {
+    remote = input.signatureId
+      ? await getSignature(input.signatureId, ctx.token, academicYearId)
+      : await getDefaultSignature(ctx.token, academicYearId);
+  } catch (err) {
+    if (err instanceof SignatureServiceError) throw new ExternalServiceError(err.message);
+    throw err;
+  }
+  if (input.signatureId && !remote) {
+    throw new NotFoundError('Signature introuvable ou non autorisee');
+  }
+  if (!remote) {
+    throw new ConflictError(
+      'Aucune signature par defaut. Definissez une signature principale avant de signer.',
     );
-  } else {
-    // Signature inline (signataire externe sans compte).
-    signatureType = input.type as SignatureType;
+  }
+  // Anti-usurpation: la signature doit appartenir a l'utilisateur qui signe.
+  if (remote.user_id && remote.user_id !== ctx.auth.userId) {
+    throw new ForbiddenError('Cette signature n\'appartient pas a l\'utilisateur courant');
   }
 
+  // 2) Recuperer le rendu (image DRAWN ou texte TEXT).
+  const signatureType = toSignatureType(remote);
+  let render: string | null = null;
+  if (signatureType === SignatureType.DRAWN) {
+    const image = await getSignatureImage(remote.id, ctx.token, academicYearId);
+    render = image ? `data:${image.contentType};base64,${image.buffer.toString('base64')}` : null;
+  } else {
+    render = remote.signature_text ?? remote.display_name ?? signatory.name;
+  }
+
+  const signedAt = new Date();
+
+  // 3) Apposer sur le PDF: corps + toutes les signatures recueillies (persistees)
+  //    + la signature courante. Si cette etape echoue -> rollback (pas de SIGNED).
+  const priorBlocks = all
+    .filter((s) => s.status === SignatoryStatus.SIGNED)
+    .sort((a, b) => a.order_index - b.order_index)
+    .map(blockFor);
+  const currentBlock: SignatureBlock = {
+    name: signatory.name,
+    role: signatory.email,
+    date: formatDateFr(signedAt),
+    type: signatureType,
+    render,
+  };
+  const body = contract.rendered_body ?? fallbackBody(contract);
+  const pdf = await htmlToPdfWithSignatures(body, {}, [...priorBlocks, currentBlock]);
+
+  const signedDoc = await attachGeneratedPdf({
+    tenantSchoolId: request.tenant_school_id,
+    contractId: request.contract_id,
+    buffer: pdf,
+    fileName: `${contract.contract_number}-signe.pdf`,
+    actorUserId: ctx.auth.userId,
+    ip: ctx.ip,
+    type: DocumentType.SIGNE,
+  });
+
+  // 4) Persister le signataire (SIGNED) - rendu conserve pour regenerations futures.
   signatory.status = SignatoryStatus.SIGNED;
   signatory.signature_type = signatureType;
-  signatory.signed_at = new Date();
+  signatory.signed_at = signedAt;
   signatory.ip = ctx.ip;
   signatory.device = ctx.device;
-  signatory.signature_ref = signatureRef;
+  signatory.signature_ref = remote.id;
+  signatory.signature_render = render;
+  signatory.signed_document_id = signedDoc.id;
   await repo.saveSignatory(signatory);
+
+  // 5) Journaliser l'usage cote signature-service (best-effort).
+  const usageId = await recordUsage(
+    {
+      documentType: 'CONTRACT',
+      documentId: request.contract_id,
+      usedBy: ctx.auth.userId,
+      signedAt: signedAt.toISOString(),
+      signatureId: remote.id,
+    },
+    ctx.token,
+    academicYearId,
+  );
 
   await recordAudit({
     tenantSchoolId: request.tenant_school_id,
@@ -242,17 +367,22 @@ export async function sign(requestId: string, input: SignInput, ctx: SignatureCo
     entityId: signatory.id,
     action: 'SIGN',
     actorUserId: ctx.auth.userId,
-    payload: { requestId, type: signatureType, signatureId: signatureRef, usageId },
+    payload: {
+      requestId,
+      type: signatureType,
+      signatureId: remote.id,
+      signedDocumentId: signedDoc.id,
+      usageId,
+    },
     ip: ctx.ip,
   });
 
-  // Tous signes ?
+  // 6) Tous signes -> COMPLETED + contrat ACTIVE (publie contract.signed).
   const refreshed = await repo.listSignatories(requestId);
   const allSigned = refreshed.every((s) => s.status === SignatoryStatus.SIGNED);
   if (allSigned) {
     request.status = SignatureRequestStatus.COMPLETED;
     await repo.saveRequest(request);
-    // Transition automatique du contrat -> ACTIVE (publie contract.signed).
     await transitionStatus(
       request.contract_id,
       { toStatus: ContractStatus.ACTIVE, reason: 'Toutes les signatures recueillies' },
@@ -260,7 +390,11 @@ export async function sign(requestId: string, input: SignInput, ctx: SignatureCo
     );
   }
 
-  return { signatory: serializeSignatory(signatory), requestCompleted: allSigned };
+  return {
+    signatory: serializeSignatory(signatory),
+    signedDocumentId: signedDoc.id,
+    requestCompleted: allSigned,
+  };
 }
 
 /** Relance un signataire en attente (intention de notification). */

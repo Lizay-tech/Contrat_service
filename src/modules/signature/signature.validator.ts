@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SignatureMode, SignatureType } from '../../shared/types';
+import { SignatureMode } from '../../shared/types';
 
 const uuid = z.string().uuid();
 
@@ -22,18 +22,13 @@ export const createSignatureRequestSchema = z.object({
 });
 export type CreateSignatureRequestInput = z.infer<typeof createSignatureRequestSchema>;
 
-export const signSchema = z
-  .object({
-    signatoryId: uuid,
-    // Reference a une signature du signature-service (paraphe reutilisable)...
-    signatureId: uuid.optional(),
-    // ...ou signature inline (signataire externe sans compte).
-    type: z.nativeEnum(SignatureType).optional(),
-    data: z.string().min(1).optional(),
-  })
-  .refine((o) => o.signatureId || (o.type && o.data), {
-    message: 'Fournir signatureId (signature-service) ou (type + data) pour une signature inline',
-  });
+export const signSchema = z.object({
+  signatoryId: uuid,
+  // Confirmation explicite obligatoire (verifiee dans le service -> 422 si absente).
+  confirmed: z.boolean().optional(),
+  // Signature a utiliser; si absente, la signature par defaut de l'utilisateur.
+  signatureId: uuid.optional(),
+});
 export type SignInput = z.infer<typeof signSchema>;
 
 export const remindSchema = z.object({

@@ -59,3 +59,10 @@ export class BusinessRuleError extends AppError {
     super(422, 'BUSINESS_RULE_ERROR', message, details);
   }
 }
+
+/** 502 - un service externe (ex. signature-service) est injoignable ou en erreur. */
+export class ExternalServiceError extends AppError {
+  constructor(message = 'Service externe indisponible', details?: unknown) {
+    super(502, 'EXTERNAL_SERVICE_ERROR', message, details);
+  }
+}

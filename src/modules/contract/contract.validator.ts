@@ -71,6 +71,9 @@ export const uploadDocumentSchema = z.object({
 
 export const fromTemplateSchema = z.object({
   templateId: uuid,
+  // Sources d'agregation (pre-remplissage automatique des variables).
+  employeeId: uuid.optional(),
+  assignmentId: uuid.optional(),
   variables: z.record(z.unknown()).default({}),
   parties: z.array(addPartySchema).default([]),
   title: z.string().min(3).max(255).optional(),

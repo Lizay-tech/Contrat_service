@@ -66,17 +66,29 @@ services:
       JWT_SECRET: educa_access_secret_2026
       EDUCA_SYSTEM_TENANT_ID: 00000000-0000-0000-0000-000000000001
       EDUCA_ADMIN_ROLES: SUPER_ADMIN,EDUCA_ADMIN
+      TEMPLATE_MANAGER_ROLES: SCHOOL_ADMIN,RESP_RH,EDUCA_ADMIN,SUPER_ADMIN
       UPLOAD_DIR: /app/storage/uploads
       ACADEMIC_YEAR_SERVICE_URL: http://annee-scolaire-service:8082
-      SIGNATURE_SERVICE_URL: http://signature-service:8093
+      # Nom du conteneur du signature-service sur le reseau partage educa-net.
+      SIGNATURE_SERVICE_URL: http://educa-dev-signature:8093
       COMMUNICATION_SERVICE_URL: http://communication-core-service:8087
     ports:
       - '8091:8091'
     volumes:
       - contrat_uploads:/app/storage/uploads
+    networks:
+      - default
+      - educa-net
     # Applique les migrations + seeders puis demarre le service.
     command: sh -c "npm run migrate:prod && npm run seed:prod && node dist/server.js"
 
 volumes:
   contrat_pg:
   contrat_uploads:
+
+networks:
+  # Reseau partage avec le signature-service (et autres microservices EDUCA).
+  # Prerequis (une seule fois): docker network create educa-net
+  educa-net:
+    external: true
+  default: {}

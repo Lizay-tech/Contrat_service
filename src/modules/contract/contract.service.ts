@@ -54,6 +54,8 @@ export interface RequestContext {
   tenantSchoolId: string;
   academicYearId: string | null;
   ip: string | null;
+  /** JWT brut, propage aux services d'agregation. */
+  token?: string | null;
 }
 
 /**
@@ -390,8 +392,25 @@ export async function createContractFromTemplate(input: FromTemplateInput, ctx: 
   const year = input.startDate ? Number(input.startDate.slice(0, 4)) : new Date().getFullYear();
   const contractNumber = await repo.generateContractNumber(tenantSchoolId, year);
 
-  // Rendu du corps a partir des variables fournies + valeurs systeme/derivees.
-  const context = assembleRenderContext(input.variables, {
+  // Agregation: pre-remplit les variables depuis les services (ecole, personnel,
+  // affectation, annee). Les valeurs SAISIES priment sur les valeurs agregees.
+  let aggregated: Record<string, string> = {};
+  let aggregationMissing: string[] = [];
+  if (input.employeeId || input.assignmentId) {
+    const aggCtx = await aggregateContext({
+      employeeId: input.employeeId ?? null,
+      assignmentId: input.assignmentId ?? null,
+      schoolId: type.scope === ContractScope.ETABLISSEMENT ? subjectSchoolId : null,
+      token: ctx.token ?? null,
+    });
+    aggregated = contextToVariables(aggCtx);
+    aggregationMissing = aggCtx.missingSources;
+  }
+  // Priorite: agrege (base) < saisie utilisateur.
+  const mergedVariables: Record<string, unknown> = { ...aggregated, ...input.variables };
+
+  // Rendu du corps a partir des variables fusionnees + valeurs systeme/derivees.
+  const context = assembleRenderContext(mergedVariables, {
     contractNumber,
     contractType: type.label,
     contractTitle: input.title ?? template.name,
@@ -427,7 +446,8 @@ export async function createContractFromTemplate(input: FromTemplateInput, ctx: 
     template_id: template.id,
     template_version: version.version,
     rendered_body: renderedBody,
-    metadata: { variables: input.variables },
+    // Persiste l'ensemble complet des variables (agregees + saisies) -> corrige les variables vides.
+    metadata: { variables: mergedVariables, aggregationMissing },
   });
 
   for (const p of input.parties) {

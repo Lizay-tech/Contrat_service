@@ -83,6 +83,7 @@ export async function attachGeneratedPdf(params: {
   fileName: string;
   actorUserId: string;
   ip: string | null;
+  type?: DocumentType;
 }) {
   const version = await repo.nextVersion(params.contractId);
   const uniqueName = `v${version}-${randomUUID()}.pdf`;
@@ -96,7 +97,7 @@ export async function attachGeneratedPdf(params: {
   const document = await repo.createDocument({
     tenant_school_id: params.tenantSchoolId,
     contract_id: params.contractId,
-    type: DocumentType.ORIGINAL,
+    type: params.type ?? DocumentType.ORIGINAL,
     file_path: stored.filePath,
     original_name: params.fileName,
     mime_type: 'application/pdf',
@@ -110,9 +111,9 @@ export async function attachGeneratedPdf(params: {
     tenantSchoolId: params.tenantSchoolId,
     entityType: 'contract_document',
     entityId: document.id,
-    action: 'GENERATE_PDF',
+    action: document.type === DocumentType.SIGNE ? 'SIGN_PDF' : 'GENERATE_PDF',
     actorUserId: params.actorUserId,
-    payload: { contractId: params.contractId, version, sha256: stored.sha256 },
+    payload: { contractId: params.contractId, version, sha256: stored.sha256, type: document.type },
     ip: params.ip,
   });
 
