@@ -21,6 +21,12 @@ import {
 import { isEducaAdmin } from '../../interfaces/middlewares/rbac.middleware';
 import { getContractTypeById } from '../contract-type/contract-type.service';
 import { recordAudit, listAuditForEntity } from '../audit/audit.service';
+import { resolveRenderableVersion } from '../template/template.service';
+import { attachGeneratedPdf } from '../document/document.service';
+import { assembleRenderContext } from '../../domain/template/context';
+import { findMissingRequired, renderTemplate } from '../../domain/template/render';
+import { htmlToPdf } from '../../infrastructure/pdf/html-pdf';
+import { generateContractPdf } from '../../infrastructure/pdf/contract-pdf';
 import {
   ContractEvents,
   publishContractEvent,
@@ -34,6 +40,7 @@ import {
 import type {
   AddPartyInput,
   CreateContractInput,
+  FromTemplateInput,
   ListContractsQuery,
   TransitionInput,
   UpdateContractInput,
@@ -47,6 +54,35 @@ export interface RequestContext {
   tenantSchoolId: string;
   academicYearId: string | null;
   ip: string | null;
+}
+
+/**
+ * Resout le tenant RLS et l'ecole objet selon la portee du type de contrat.
+ * Facteur commun a la creation classique et a la creation depuis template.
+ */
+function resolveScopeAndTenant(
+  scope: ContractScope,
+  subjectSchoolIdInput: string | undefined,
+  ctx: RequestContext,
+): { tenantSchoolId: string; subjectSchoolId: string | null } {
+  if (scope === ContractScope.ETABLISSEMENT) {
+    if (!isEducaAdmin(ctx.auth.roleCode)) {
+      throw new ForbiddenError(
+        'Seul un administrateur EDUCA peut creer un contrat d\'etablissement',
+      );
+    }
+    if (!subjectSchoolIdInput) {
+      throw new ValidationError('subjectSchoolId requis pour un contrat d\'etablissement');
+    }
+    if (env.educaSystemTenantId !== ctx.tenantSchoolId) {
+      throw new ForbiddenError('Incoherence de tenant pour la portee du contrat');
+    }
+    return { tenantSchoolId: env.educaSystemTenantId, subjectSchoolId: subjectSchoolIdInput };
+  }
+  if (ctx.auth.schoolId !== ctx.tenantSchoolId) {
+    throw new ForbiddenError('Incoherence de tenant pour la portee du contrat');
+  }
+  return { tenantSchoolId: ctx.auth.schoolId, subjectSchoolId: null };
 }
 
 /** Recharge un contrat avec ses relations et le serialise. */
@@ -64,30 +100,11 @@ export async function createContract(input: CreateContractInput, ctx: RequestCon
   const type = await getContractTypeById(input.contractTypeId);
   if (!type.active) throw new BusinessRuleError('Type de contrat inactif');
 
-  let tenantSchoolId: string;
-  let subjectSchoolId: string | null = null;
-
-  if (type.scope === ContractScope.ETABLISSEMENT) {
-    // Contrat d'etablissement: reserve aux administrateurs EDUCA.
-    if (!isEducaAdmin(ctx.auth.roleCode)) {
-      throw new ForbiddenError(
-        'Seul un administrateur EDUCA peut creer un contrat d\'etablissement',
-      );
-    }
-    if (!input.subjectSchoolId) {
-      throw new ValidationError('subjectSchoolId requis pour un contrat d\'etablissement');
-    }
-    tenantSchoolId = env.educaSystemTenantId;
-    subjectSchoolId = input.subjectSchoolId;
-  } else {
-    // Contrat du personnel: tenant = ecole du JWT.
-    tenantSchoolId = ctx.auth.schoolId;
-  }
-
-  // Coherence avec le tenant de session RLS (fixe par le middleware).
-  if (tenantSchoolId !== ctx.tenantSchoolId) {
-    throw new ForbiddenError('Incoherence de tenant pour la portee du contrat');
-  }
+  const { tenantSchoolId, subjectSchoolId } = resolveScopeAndTenant(
+    type.scope,
+    input.subjectSchoolId,
+    ctx,
+  );
 
   const year = input.startDate ? Number(input.startDate.slice(0, 4)) : new Date().getFullYear();
   const contractNumber = await repo.generateContractNumber(tenantSchoolId, year);
@@ -350,4 +367,178 @@ export async function getHistory(id: string) {
       createdAt: a.created_at,
     })),
   };
+}
+
+/**
+ * Cas d'usage: creation d'un contrat DEPUIS un template. Rend le corps
+ * (rendered_body), cree le contrat en DRAFT, ajoute les parties et genere le PDF.
+ */
+export async function createContractFromTemplate(input: FromTemplateInput, ctx: RequestContext) {
+  const { template, version } = await resolveRenderableVersion(input.templateId);
+  if (!template.contract_type_id) {
+    throw new ValidationError('Le modele n\'est rattache a aucun type de contrat');
+  }
+  const type = await getContractTypeById(template.contract_type_id);
+  if (!type.active) throw new BusinessRuleError('Type de contrat inactif');
+
+  const { tenantSchoolId, subjectSchoolId } = resolveScopeAndTenant(
+    type.scope,
+    input.subjectSchoolId,
+    ctx,
+  );
+
+  const year = input.startDate ? Number(input.startDate.slice(0, 4)) : new Date().getFullYear();
+  const contractNumber = await repo.generateContractNumber(tenantSchoolId, year);
+
+  // Rendu du corps a partir des variables fournies + valeurs systeme/derivees.
+  const context = assembleRenderContext(input.variables, {
+    contractNumber,
+    contractType: type.label,
+    contractTitle: input.title ?? template.name,
+    amount: input.amount ?? null,
+    currency: input.currency ?? 'HTG',
+    city: input.city ?? null,
+    startDate: input.startDate ?? null,
+    endDate: input.endDate ?? null,
+  });
+  const missing = findMissingRequired(version.body, context);
+  if (missing.length > 0) {
+    throw new ValidationError('Variables requises manquantes', missing);
+  }
+  const renderedBody = renderTemplate(version.body, context);
+  const title = input.title ?? String(context.contract_title ?? template.name);
+
+  const contract = await repo.createContract({
+    tenant_school_id: tenantSchoolId,
+    subject_school_id: subjectSchoolId,
+    annee_scolaire_id: ctx.academicYearId,
+    contract_number: contractNumber,
+    contract_type_id: type.id,
+    status: INITIAL_STATUS,
+    title,
+    start_date: input.startDate ?? null,
+    end_date: input.endDate ?? null,
+    duration_days: input.durationDays ?? null,
+    trial_period_days: input.trialPeriodDays ?? null,
+    amount: input.amount ?? null,
+    currency: input.currency ?? 'HTG',
+    renewal_mode: input.renewalMode ?? type.default_renewal_mode,
+    owner_user_id: ctx.auth.userId,
+    template_id: template.id,
+    template_version: version.version,
+    rendered_body: renderedBody,
+    metadata: { variables: input.variables },
+  });
+
+  for (const p of input.parties) {
+    await repo.addParty({
+      tenant_school_id: tenantSchoolId,
+      contract_id: contract.id,
+      party_type: p.partyType,
+      person_user_id: p.personUserId ?? null,
+      school_id: p.schoolId ?? null,
+      role_in_contract: p.roleInContract,
+      full_name: p.fullName,
+      email: p.email ?? null,
+    });
+  }
+  if (type.scope === ContractScope.ETABLISSEMENT && subjectSchoolId) {
+    await repo.addParty({
+      tenant_school_id: tenantSchoolId,
+      contract_id: contract.id,
+      party_type: PartyType.SCHOOL,
+      person_user_id: null,
+      school_id: subjectSchoolId,
+      role_in_contract: RoleInContract.CLIENT,
+      full_name: String(context.school_name ?? `Etablissement ${subjectSchoolId}`),
+      email: (context.school_email as string) ?? null,
+    });
+  }
+
+  await repo.addStatusHistory({
+    tenantSchoolId,
+    contractId: contract.id,
+    fromStatus: null,
+    toStatus: INITIAL_STATUS,
+    changedBy: ctx.auth.userId,
+    reason: `Creation depuis modele ${template.name} v${version.version}`,
+  });
+
+  await recordAudit({
+    tenantSchoolId,
+    entityType: ENTITY,
+    entityId: contract.id,
+    action: 'CREATE_FROM_TEMPLATE',
+    actorUserId: ctx.auth.userId,
+    payload: { templateId: template.id, templateVersion: version.version, contractNumber },
+    ip: ctx.ip,
+  });
+
+  publishContractEvent(ContractEvents.CREATED, {
+    contractId: contract.id,
+    tenantSchoolId,
+    contractTypeId: type.id,
+    contractNumber,
+    status: contract.status,
+    scope: type.scope,
+    templateId: template.id,
+  });
+
+  // Genere et stocke le PDF (type ORIGINAL, hash sha256).
+  const pdf = await htmlToPdf(renderedBody, { header: version.header, footer: version.footer });
+  await attachGeneratedPdf({
+    tenantSchoolId,
+    contractId: contract.id,
+    buffer: pdf,
+    fileName: `${contractNumber}.pdf`,
+    actorUserId: ctx.auth.userId,
+    ip: ctx.ip,
+  });
+
+  return reloadSerialized(contract.id);
+}
+
+export interface ContractPdf {
+  buffer: Buffer;
+  fileName: string;
+}
+
+/** (Re)genere le PDF d'un contrat (corps rendu si disponible, sinon fiche structuree). */
+export async function getContractPdf(id: string): Promise<ContractPdf> {
+  const contract = await repo.findContractById(id);
+  if (!contract) throw new NotFoundError('Contrat introuvable');
+
+  let buffer: Buffer;
+  if (contract.rendered_body) {
+    buffer = await htmlToPdf(contract.rendered_body);
+  } else {
+    const full = await repo.findContractWithRelations(id);
+    const withRel = full as typeof full & {
+      contractType?: { label: string; scope: string };
+      parties?: Array<{
+        role_in_contract: string;
+        full_name: string;
+        party_type: string;
+        email: string | null;
+      }>;
+    };
+    buffer = await generateContractPdf({
+      contractNumber: contract.contract_number,
+      title: contract.title,
+      typeLabel: withRel?.contractType?.label ?? '',
+      status: contract.status,
+      scope: withRel?.contractType?.scope ?? '',
+      startDate: contract.start_date,
+      endDate: contract.end_date,
+      amount: contract.amount,
+      currency: contract.currency,
+      parties: (withRel?.parties ?? []).map((p) => ({
+        role: p.role_in_contract,
+        fullName: p.full_name,
+        type: p.party_type,
+        email: p.email,
+      })),
+    });
+  }
+  return { buffer, fileName: `${contract.contract_number}.pdf` };
 }

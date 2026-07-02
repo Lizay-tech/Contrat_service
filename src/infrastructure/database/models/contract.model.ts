@@ -30,6 +30,9 @@ export class ContractModel extends Model<
   declare currency: CreationOptional<string>;
   declare renewal_mode: RenewalMode;
   declare owner_user_id: string;
+  declare template_id: string | null;
+  declare template_version: number | null;
+  declare rendered_body: string | null;
   declare metadata: CreationOptional<Record<string, unknown>>;
   declare created_at: CreationOptional<Date>;
   declare updated_at: CreationOptional<Date>;
@@ -62,6 +65,9 @@ ContractModel.init(
       defaultValue: RenewalMode.MANUAL,
     },
     owner_user_id: { type: DataTypes.UUID, allowNull: false },
+    template_id: { type: DataTypes.UUID, allowNull: true },
+    template_version: { type: DataTypes.INTEGER, allowNull: true },
+    rendered_body: { type: DataTypes.TEXT, allowNull: true },
     metadata: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
     created_at: DataTypes.DATE,
     updated_at: DataTypes.DATE,

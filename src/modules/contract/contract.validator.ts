@@ -69,6 +69,23 @@ export const uploadDocumentSchema = z.object({
   type: z.nativeEnum(DocumentType).optional(),
 });
 
+export const fromTemplateSchema = z.object({
+  templateId: uuid,
+  variables: z.record(z.unknown()).default({}),
+  parties: z.array(addPartySchema).default([]),
+  title: z.string().min(3).max(255).optional(),
+  startDate: dateOnly.optional(),
+  endDate: dateOnly.optional(),
+  durationDays: z.number().int().positive().optional(),
+  trialPeriodDays: z.number().int().nonnegative().optional(),
+  amount: z.number().nonnegative().optional(),
+  currency: z.string().length(3).optional(),
+  renewalMode: z.nativeEnum(RenewalMode).optional(),
+  subjectSchoolId: uuid.optional(),
+  city: z.string().max(128).optional(),
+});
+export type FromTemplateInput = z.infer<typeof fromTemplateSchema>;
+
 export const listContractsQuerySchema = z.object({
   status: z.nativeEnum(ContractStatus).optional(),
   contractTypeId: uuid.optional(),

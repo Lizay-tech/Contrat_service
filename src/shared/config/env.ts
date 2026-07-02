@@ -67,6 +67,13 @@ export const env = {
   educaSystemTenantId:
     process.env.EDUCA_SYSTEM_TENANT_ID ?? '00000000-0000-0000-0000-000000000001',
   educaAdminRoles: list('EDUCA_ADMIN_ROLES', ['SUPER_ADMIN', 'EDUCA_ADMIN']),
+  // Roles autorises a creer/publier des modeles de contrat.
+  templateManagerRoles: list('TEMPLATE_MANAGER_ROLES', [
+    'SCHOOL_ADMIN',
+    'RESP_RH',
+    'EDUCA_ADMIN',
+    'SUPER_ADMIN',
+  ]),
 
   storage: {
     uploadDir: process.env.UPLOAD_DIR ?? './storage/uploads',

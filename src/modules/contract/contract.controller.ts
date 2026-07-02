@@ -5,6 +5,7 @@ import type { AuthContext } from '../../shared/types';
 import {
   addPartySchema,
   createContractSchema,
+  fromTemplateSchema,
   listContractsQuerySchema,
   transitionSchema,
   updateContractSchema,
@@ -27,6 +28,19 @@ export async function postContract(req: Request, res: Response): Promise<void> {
   const input = createContractSchema.parse(req.body);
   const result = await service.createContract(input, buildContext(req));
   sendCreated(res, result);
+}
+
+export async function postContractFromTemplate(req: Request, res: Response): Promise<void> {
+  const input = fromTemplateSchema.parse(req.body);
+  const result = await service.createContractFromTemplate(input, buildContext(req));
+  sendCreated(res, result);
+}
+
+export async function getContractPdf(req: Request, res: Response): Promise<void> {
+  const { buffer, fileName } = await service.getContractPdf(req.params.id as string);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+  res.status(200).send(buffer);
 }
 
 export async function getContracts(req: Request, res: Response): Promise<void> {

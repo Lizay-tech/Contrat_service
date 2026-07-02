@@ -72,6 +72,53 @@ export async function attachDocument(
   return serializeDocument(document);
 }
 
+/**
+ * Attache un PDF GENERE par le serveur (depuis un template) a un contrat.
+ * Reutilise le meme stockage/hash/versionnement que l'upload manuel.
+ */
+export async function attachGeneratedPdf(params: {
+  tenantSchoolId: string;
+  contractId: string;
+  buffer: Buffer;
+  fileName: string;
+  actorUserId: string;
+  ip: string | null;
+}) {
+  const version = await repo.nextVersion(params.contractId);
+  const uniqueName = `v${version}-${randomUUID()}.pdf`;
+  const stored = await saveDocument({
+    tenantSchoolId: params.tenantSchoolId,
+    contractId: params.contractId,
+    uniqueName,
+    buffer: params.buffer,
+  });
+
+  const document = await repo.createDocument({
+    tenant_school_id: params.tenantSchoolId,
+    contract_id: params.contractId,
+    type: DocumentType.ORIGINAL,
+    file_path: stored.filePath,
+    original_name: params.fileName,
+    mime_type: 'application/pdf',
+    size_bytes: stored.sizeBytes,
+    sha256_hash: stored.sha256,
+    version,
+    uploaded_by: params.actorUserId,
+  });
+
+  await recordAudit({
+    tenantSchoolId: params.tenantSchoolId,
+    entityType: 'contract_document',
+    entityId: document.id,
+    action: 'GENERATE_PDF',
+    actorUserId: params.actorUserId,
+    payload: { contractId: params.contractId, version, sha256: stored.sha256 },
+    ip: params.ip,
+  });
+
+  return serializeDocument(document);
+}
+
 export interface DownloadResult {
   buffer: Buffer;
   mimeType: string;

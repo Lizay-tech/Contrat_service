@@ -117,3 +117,117 @@ Authorization: Bearer {{token}}
 ### Historique des statuts + audit
 GET {{baseUrl}}/contracts/{{contractId}}/history
 Authorization: Bearer {{token}}
+
+# =====================================================================
+# Phase 2 — Modèles (templates) + Signature électronique
+# =====================================================================
+
+@templateId = COLLER_UN_ID_DE_TEMPLATE
+@requestId = COLLER_UN_ID_DE_DEMANDE_SIGNATURE
+@signatoryId = COLLER_UN_ID_DE_SIGNATAIRE
+
+### Lister les modèles (prédéfinis + école)
+GET {{baseUrl}}/templates?scopeOwner=PREDEFINED&limit=100
+Authorization: Bearer {{token}}
+
+### Détail d'un modèle (+ versions)
+GET {{baseUrl}}/templates/{{templateId}}
+Authorization: Bearer {{token}}
+
+### Variables détectées dans un modèle
+GET {{baseUrl}}/templates/{{templateId}}/variables
+Authorization: Bearer {{token}}
+
+### Cloner un modèle prédéfini (rôle gestionnaire requis)
+POST {{baseUrl}}/templates/{{templateId}}/duplicate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Mon CDI école" }
+
+### Créer un modèle école
+POST {{baseUrl}}/templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Contrat maison",
+  "contractTypeId": "{{contractTypeIdPersonnel}}",
+  "body": "<h1>Contrat</h1><p>{{employee_name}}, poste {{employee_function}}. Salaire {{salary}} {{currency}} ({{salary_in_words}}). Fait le {{today}}.</p>"
+}
+
+### Publier un modèle
+POST {{baseUrl}}/templates/{{templateId}}/publish
+Authorization: Bearer {{token}}
+
+### Prévisualiser (HTML) avec données d'exemple
+POST {{baseUrl}}/templates/{{templateId}}/preview
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "format": "html", "sampleData": { "employee_name": "Marie Claire", "school_name": "Collège Test" } }
+
+### Créer un contrat DEPUIS un modèle (génère rendered_body + PDF)
+POST {{baseUrl}}/contracts/from-template
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "templateId": "{{templateId}}",
+  "title": "CDI Jean Baptiste",
+  "startDate": "2026-09-01",
+  "amount": 25000,
+  "currency": "HTG",
+  "variables": {
+    "employee_name": "Jean Baptiste",
+    "employee_function": "Enseignant",
+    "school_name": "Collège Test",
+    "director_name": "Mme Directrice"
+  },
+  "parties": [
+    { "partyType": "PERSON", "roleInContract": "EMPLOYE", "fullName": "Jean Baptiste", "email": "jean@ecole.ht" }
+  ]
+}
+
+### Télécharger le PDF d'un contrat
+GET {{baseUrl}}/contracts/{{contractId}}/pdf
+Authorization: Bearer {{token}}
+
+### Ouvrir une demande de signature (contrat en APPROVED)
+POST {{baseUrl}}/contracts/{{contractId}}/signature-requests
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "mode": "PARALLEL",
+  "deadline": "2026-09-15",
+  "signatories": [
+    { "name": "Employeur", "email": "employeur@ecole.ht" },
+    { "name": "Employé", "email": "employe@ecole.ht" }
+  ]
+}
+
+### Statut des signatures d'un contrat
+GET {{baseUrl}}/contracts/{{contractId}}/signatures
+Authorization: Bearer {{token}}
+
+### Signer avec un paraphe du signature-service (recommandé). Tous signés → ACTIVE
+POST {{baseUrl}}/signature-requests/{{requestId}}/sign
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "signatoryId": "{{signatoryId}}", "signatureId": "ID_SIGNATURE_DU_SERVICE_8093" }
+
+### Signer inline (signataire externe sans compte)
+POST {{baseUrl}}/signature-requests/{{requestId}}/sign
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "signatoryId": "{{signatoryId}}", "type": "TEXT", "data": "Jean Baptiste" }
+
+### Relancer un signataire
+POST {{baseUrl}}/signature-requests/{{requestId}}/remind
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "signatoryId": "{{signatoryId}}" }

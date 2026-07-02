@@ -51,6 +51,60 @@ export enum DocumentType {
   SIGNE = 'SIGNE',
 }
 
+// ----- Templates (Phase 2) -----
+
+export enum TemplateScopeOwner {
+  PREDEFINED = 'PREDEFINED',
+  SCHOOL = 'SCHOOL',
+}
+
+export enum TemplateStatus {
+  DRAFT = 'DRAFT',
+  PUBLISHED = 'PUBLISHED',
+  ARCHIVED = 'ARCHIVED',
+}
+
+export enum VariableType {
+  TEXT = 'text',
+  DATE = 'date',
+  NUMBER = 'number',
+  CURRENCY = 'currency',
+  IMAGE = 'image',
+}
+
+export enum VariableSource {
+  EMPLOYEE = 'EMPLOYEE',
+  SCHOOL = 'SCHOOL',
+  CONTRACT = 'CONTRACT',
+  SYSTEM = 'SYSTEM',
+}
+
+// ----- Signature electronique (Phase 2) -----
+
+export enum SignatureMode {
+  SEQUENTIAL = 'SEQUENTIAL',
+  PARALLEL = 'PARALLEL',
+}
+
+export enum SignatureRequestStatus {
+  PENDING = 'PENDING',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+  EXPIRED = 'EXPIRED',
+}
+
+export enum SignatoryStatus {
+  PENDING = 'PENDING',
+  SIGNED = 'SIGNED',
+  REFUSED = 'REFUSED',
+  EXPIRED = 'EXPIRED',
+}
+
+export enum SignatureType {
+  TEXT = 'TEXT',
+  DRAWN = 'DRAWN',
+}
+
 /** Contexte d'authentification extrait du JWT (claims camelCase EDUCA). */
 export interface AuthContext {
   userId: string;
@@ -70,4 +124,10 @@ export const enumValues = {
   PartyType: Object.values(PartyType),
   RoleInContract: Object.values(RoleInContract),
   DocumentType: Object.values(DocumentType),
+  TemplateScopeOwner: Object.values(TemplateScopeOwner),
+  TemplateStatus: Object.values(TemplateStatus),
+  SignatureMode: Object.values(SignatureMode),
+  SignatureRequestStatus: Object.values(SignatureRequestStatus),
+  SignatoryStatus: Object.values(SignatoryStatus),
+  SignatureType: Object.values(SignatureType),
 } as const;

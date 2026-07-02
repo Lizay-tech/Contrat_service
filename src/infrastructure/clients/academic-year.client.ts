@@ -17,11 +17,16 @@ export async function getActiveAcademicYearId(
   tenantSchoolId: string,
 ): Promise<string | null> {
   const key = cacheKey(tenantSchoolId);
-  try {
-    const cached = await redis.get(key);
-    if (cached) return cached === 'null' ? null : cached;
-  } catch (err) {
-    logger.warn({ err }, '[academic-year] lecture cache impossible');
+  // Ne consulter le cache que si Redis est effectivement connecte (evite de
+  // bloquer sur la file hors-ligne quand Redis est indisponible).
+  const redisReady = redis.status === 'ready';
+  if (redisReady) {
+    try {
+      const cached = await redis.get(key);
+      if (cached) return cached === 'null' ? null : cached;
+    } catch (err) {
+      logger.warn({ err }, '[academic-year] lecture cache impossible');
+    }
   }
 
   try {
@@ -33,7 +38,9 @@ export async function getActiveAcademicYearId(
     }
     const body = (await res.json()) as { data?: { id?: string } };
     const id = body?.data?.id ?? null;
-    await redis.set(key, id ?? 'null', 'EX', CACHE_TTL_SECONDS).catch(() => undefined);
+    if (redisReady) {
+      await redis.set(key, id ?? 'null', 'EX', CACHE_TTL_SECONDS).catch(() => undefined);
+    }
     return id;
   } catch (err) {
     logger.warn({ err }, '[academic-year] service indisponible, annee non resolue');

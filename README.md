@@ -157,3 +157,104 @@ Voir [`.env.example`](.env.example) — DB, Redis, RabbitMQ, `JWT_SECRET`, `EDUC
 ## 13. Exemples de requêtes
 
 Voir [`requests.http`](requests.http) (extension REST Client / IntelliJ HTTP).
+
+---
+
+# Phase 2 — Modèles (templates) + Signature électronique
+
+Extension du service : modèles de contrat versionnés, rendu de variables `{{…}}`,
+génération PDF, et cycle de signature électronique (intégration `signature-service` 8093).
+
+## 14. Modèle de données (migrations 0003 & 0004)
+
+- `contract_templates` — `scope_owner` (PREDEFINED|SCHOOL), `contract_type_id`, `status` (DRAFT|PUBLISHED|ARCHIVED), `current_version`.
+- `template_versions` — `body` (HTML restreint + `{{tokens}}`), `header`, `footer`, `variables` (**jsonb**), `is_predefined`, `published_at`.
+- `clauses` / `template_clauses` — bibliothèque de clauses réutilisables (rendu par concaténation ordonnée).
+- `signature_requests` / `signatories` — suivi local des demandes et signataires.
+- `contracts` étendue : `template_id`, `template_version`, `rendered_body`.
+
+**RLS** : isolation stricte par tenant sur toutes ces tables. Les modèles **PREDEFINED**
+(propriété du tenant système) restent **lisibles par tous** via une policy spéciale
+(`scope_owner = 'PREDEFINED'` / `is_predefined = true`), mais **non modifiables** par les écoles.
+
+> ⚠️ La RLS n'est active que si l'utilisateur PostgreSQL applicatif **n'est pas superuser**
+> (les superusers contournent la RLS, même `FORCE`). En production, créez un rôle dédié
+> `NOSUPERUSER` propriétaire des tables.
+
+## 15. Décisions de conception
+
+- **Variables → jsonb sur `template_versions`** (pas de table dédiée) : les variables sont
+  intrinsèques à une version et évoluent avec son corps. Un **catalogue statique**
+  ([variable-catalogue.ts](src/domain/template/variable-catalogue.ts), cf. spec A.2) fournit labels/types/`required`.
+- **PDF → pdfkit + mini-renderer HTML restreint** (`<h1-3>,<p>,<br>,<strong>,<em>,<ul><li>,<table>`) :
+  pas de Chromium headless → image Docker légère, rendu déterministe. Puppeteer serait
+  réservé à un HTML/CSS arbitraire.
+- **Rendu** : moteur pur ([render.ts](src/domain/template/render.ts)) + assemblage de contexte
+  ([context.ts](src/domain/template/context.ts)) : dates en français, `salary_in_words`
+  (montant en toutes lettres FR, [number-to-words.ts](src/domain/template/number-to-words.ts)),
+  variables système auto-remplies (`today`, `signature_zone`…).
+- **Signature** : contrat-service **orchestre localement** le cycle multi-signataires
+  (demandes, ordre séquentiel/parallèle, bascule → ACTIVE). Le **signature-service** (8093)
+  gère, lui, les **signatures réutilisables** (paraphes TEXT/DRAWN) et un journal d'utilisations.
+  Le client ([signature.client.ts](src/infrastructure/clients/signature.client.ts)) consomme
+  l'API réelle du service en **transmettant le JWT de l'appelant** (routes `authenticate` + `schoolScope`) :
+  `GET /api/signatures/:id`, `GET /api/signatures/:id/image`, `POST /api/signature-usages`.
+
+## 16. Endpoints Phase 2 (base `/api/v1`)
+
+**Templates** (écriture réservée à `TEMPLATE_MANAGER_ROLES`) :
+
+| Méthode | Route | Description |
+|--------|-------|-------------|
+| GET | `/templates` | Liste (filtres `scopeOwner`, `contractTypeId`, `status`, `search`) — PREDEFINED + école |
+| GET | `/templates/:id` · `/versions` · `/variables` | Détail, versions, variables détectées |
+| POST | `/templates` | Créer un modèle SCHOOL (v1 brouillon) |
+| PATCH | `/templates/:id` | MàJ métadonnées ; un `body` fourni crée une **nouvelle version** |
+| POST | `/templates/:id/duplicate` | Cloner un modèle (PREDEFINED ou école) → modèle SCHOOL éditable |
+| POST | `/templates/:id/publish` · `/archive` | Publier (fige la version) / archiver |
+| POST | `/templates/:id/preview` | `{ sampleData?, format: html\|pdf }` — rendu d'exemple |
+| DELETE | `/templates/:id` | Soft-delete (interdit si des contrats l'utilisent → 409) |
+
+**Contrat depuis template** :
+
+| Méthode | Route | Description |
+|--------|-------|-------------|
+| POST | `/contracts/from-template` | `{ templateId, variables, parties, startDate, … }` → DRAFT + `rendered_body` + PDF généré |
+| GET | `/contracts/:id/pdf` | (Re)génère et renvoie le PDF |
+
+**Signature électronique** :
+
+| Méthode | Route | Description |
+|--------|-------|-------------|
+| POST | `/contracts/:id/signature-requests` | `{ signatories[], mode: SEQUENTIAL\|PARALLEL, deadline? }` → passe APPROVED→PENDING_SIGNATURE |
+| GET | `/contracts/:id/signatures` | Statut par signataire |
+| POST | `/signature-requests/:requestId/sign` | `{ signatoryId, signatureId }` (paraphe du signature-service) **ou** `{ signatoryId, type, data }` (inline externe) |
+| POST | `/signature-requests/:requestId/remind` | `{ signatoryId }` — relance (intention de notification) |
+
+**Intégration signature-service** : quand `signatureId` est fourni, contrat-service **valide**
+la signature (`GET /api/signatures/:id`), récupère le paraphe (`/image`, best-effort) et
+**journalise l'utilisation** (`POST /api/signature-usages`) sur le service, en propageant le JWT.
+Le cas inline (`type`+`data`) couvre les signataires externes sans compte.
+
+Quand **tous** les signataires ont signé → transition automatique **→ ACTIVE**, événement
+`contract.signed`, audit. Les intentions de notification sont publiées sur RabbitMQ
+(`contract.signature_requested`, `contract.signature_reminder`) — pas d'appel direct à
+`communication-core` en Phase 2.
+
+## 17. Modèles prédéfinis seedés (scope PREDEFINED, clonables)
+
+Enseignant CDI · Enseignant CDD · Vacataire (horaire) · Personnel administratif ·
+Prestation de service · Convention de stage · Abonnement SaaS école.
+(Seeder [`0003-predefined-templates.ts`](src/infrastructure/database/seeders/0003-predefined-templates.ts).)
+
+## 18. Rôles (RBAC)
+
+- `EDUCA_ADMIN_ROLES` (déf. `SUPER_ADMIN,EDUCA_ADMIN`) : contrats d'établissement, gestion des modèles PREDEFINED.
+- `TEMPLATE_MANAGER_ROLES` (déf. `SCHOOL_ADMIN,RESP_RH,EDUCA_ADMIN,SUPER_ADMIN`) : création/édition/publication de modèles.
+
+## 19. Tests Phase 2
+
+`tests/render.test.ts` (unitaire : substitution, variables requises, dates FR, nombre en lettres)
+et `tests/templates-signature.integration.test.ts` (modèles prédéfinis, clonage, isolation RLS
+inter-tenants, preview, contrat depuis template + PDF, variable requise manquante, **cycle de
+signature → ACTIVE**). Suite complète : **38 tests**.

@@ -4,6 +4,10 @@ import { ContractPartyModel } from './contract-party.model';
 import { ContractDocumentModel } from './contract-document.model';
 import { ContractStatusHistoryModel } from './contract-status-history.model';
 import { AuditLogModel } from './audit-log.model';
+import { ContractTemplateModel } from './contract-template.model';
+import { TemplateVersionModel } from './template-version.model';
+import { ClauseModel, TemplateClauseModel } from './clause.model';
+import { SignatureRequestModel, SignatoryModel } from './signature-request.model';
 
 /**
  * Associations. Les modeles s'auto-enregistrent aupres de l'instance sequelize
@@ -35,6 +39,40 @@ ContractStatusHistoryModel.belongsTo(ContractModel, {
   as: 'contract',
 });
 
+// ----- Templates -----
+ContractTemplateModel.hasMany(TemplateVersionModel, {
+  foreignKey: 'template_id',
+  as: 'versions',
+});
+TemplateVersionModel.belongsTo(ContractTemplateModel, {
+  foreignKey: 'template_id',
+  as: 'template',
+});
+
+ContractTemplateModel.hasMany(TemplateClauseModel, {
+  foreignKey: 'template_id',
+  as: 'templateClauses',
+});
+TemplateClauseModel.belongsTo(ClauseModel, { foreignKey: 'clause_id', as: 'clause' });
+TemplateClauseModel.belongsTo(ContractTemplateModel, {
+  foreignKey: 'template_id',
+  as: 'template',
+});
+
+// ----- Signature -----
+SignatureRequestModel.hasMany(SignatoryModel, {
+  foreignKey: 'request_id',
+  as: 'signatories',
+});
+SignatoryModel.belongsTo(SignatureRequestModel, {
+  foreignKey: 'request_id',
+  as: 'request',
+});
+ContractModel.hasMany(SignatureRequestModel, {
+  foreignKey: 'contract_id',
+  as: 'signatureRequests',
+});
+
 export {
   ContractTypeModel,
   ContractModel,
@@ -42,4 +80,10 @@ export {
   ContractDocumentModel,
   ContractStatusHistoryModel,
   AuditLogModel,
+  ContractTemplateModel,
+  TemplateVersionModel,
+  ClauseModel,
+  TemplateClauseModel,
+  SignatureRequestModel,
+  SignatoryModel,
 };
