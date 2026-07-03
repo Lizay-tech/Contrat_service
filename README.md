@@ -221,8 +221,17 @@ génération PDF, et cycle de signature électronique (intégration `signature-s
 
 | Méthode | Route | Description |
 |--------|-------|-------------|
-| POST | `/contracts/from-template` | `{ templateId, variables, parties, startDate, … }` → DRAFT + `rendered_body` + PDF généré |
-| GET | `/contracts/:id/pdf` | (Re)génère et renvoie le PDF |
+| POST | `/contracts/from-template` | `{ templateId, variables, parties, startDate, renderedBody?, … }` → DRAFT + `rendered_body` + PDF généré |
+| GET | `/contracts/:id/pdf` | (Re)génère et renvoie le PDF (reflète `rendered_body`) |
+| PATCH | `/contracts/:id` (DRAFT) | Champs éditables **+ `renderedBody`** (ré-édition du contenu) |
+
+**Contenu éditable (`renderedBody`)** : si `from-template` reçoit `renderedBody`, il est utilisé
+**tel quel** (pas de re-rendu du modèle) ; sinon le modèle est rendu normalement. Un contrat en
+**DRAFT** peut voir son `rendered_body` ré-édité via `PATCH`, puis son PDF régénéré (`GET …/pdf`).
+Tout HTML fourni/édité est **assaini** ([sanitize.ts](src/infrastructure/html/sanitize.ts) — retire
+`<script>`, `on*`, `<iframe>`…) avant stockage et rendu Puppeteer. L'édition du contenu est
+**réservée** aux `TEMPLATE_MANAGER_ROLES` (sinon **403**). Persistance inchangée (variables jsonb,
+parties, année, agrégation).
 
 **Signature électronique** (via signature-service 8093, signature par défaut + confirmation) :
 

@@ -19,7 +19,8 @@ import {
   INITIAL_STATUS,
   InvalidTransitionError,
 } from '../../domain/contract/status-machine';
-import { isEducaAdmin } from '../../interfaces/middlewares/rbac.middleware';
+import { isEducaAdmin, isTemplateManager } from '../../interfaces/middlewares/rbac.middleware';
+import { sanitizeContractHtml } from '../../infrastructure/html/sanitize';
 import { getContractTypeById } from '../contract-type/contract-type.service';
 import { recordAudit, listAuditForEntity } from '../audit/audit.service';
 import { resolveRenderableVersion } from '../template/template.service';
@@ -208,6 +209,10 @@ export async function updateContract(
   if (contract.status !== ContractStatus.DRAFT) {
     throw new ConflictError('Modification autorisee uniquement en statut DRAFT');
   }
+  // La re-edition du contenu (rendered_body) est reservee aux gestionnaires.
+  if (input.renderedBody !== undefined && !isTemplateManager(ctx.auth.roleCode)) {
+    throw new ForbiddenError('Edition du contenu du contrat reservee aux roles autorises');
+  }
 
   applyUpdate(contract, input);
   await repo.saveContract(contract);
@@ -235,6 +240,8 @@ function applyUpdate(contract: ContractModel, input: UpdateContractInput): void 
   if (input.currency !== undefined) contract.currency = input.currency;
   if (input.renewalMode !== undefined) contract.renewal_mode = input.renewalMode;
   if (input.metadata !== undefined) contract.metadata = input.metadata;
+  // Contenu HTML re-edite: assaini avant stockage (utilise ensuite pour le PDF).
+  if (input.renderedBody !== undefined) contract.rendered_body = sanitizeContractHtml(input.renderedBody);
 }
 
 /** Correspondance transition -> evenement specifique publie en complement. */
@@ -426,14 +433,27 @@ export async function createContractFromTemplate(input: FromTemplateInput, ctx: 
     startDate: input.startDate ?? null,
     endDate: input.endDate ?? null,
   });
-  const missing = findMissingRequired(version.body, context);
-  if (missing.length > 0) {
-    throw new ValidationError('Variables requises manquantes', missing);
-  }
-  const renderedBody = renderTemplate(version.body, context);
-  const missingVars = missingVariableKeys(version.body, context);
-  if (missingVars.length > 0) {
-    logger.info({ contractNumber, missing: missingVars }, '[from-template] variables absentes -> marqueur');
+  let renderedBody: string;
+  if (input.renderedBody !== undefined) {
+    // Corps deja compose fourni: reserve aux gestionnaires de contenu, utilise
+    // TEL QUEL apres assainissement (pas de re-rendu du modele).
+    if (!isTemplateManager(ctx.auth.roleCode)) {
+      throw new ForbiddenError('Edition du contenu du contrat reservee aux roles autorises');
+    }
+    renderedBody = sanitizeContractHtml(input.renderedBody);
+  } else {
+    const missing = findMissingRequired(version.body, context);
+    if (missing.length > 0) {
+      throw new ValidationError('Variables requises manquantes', missing);
+    }
+    renderedBody = renderTemplate(version.body, context);
+    const missingVars = missingVariableKeys(version.body, context);
+    if (missingVars.length > 0) {
+      logger.info(
+        { contractNumber, missing: missingVars },
+        '[from-template] variables absentes -> marqueur',
+      );
+    }
   }
   const title = input.title ?? String(context.contract_title ?? template.name);
 

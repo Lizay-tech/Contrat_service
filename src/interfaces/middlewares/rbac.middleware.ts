@@ -27,3 +27,8 @@ export function requireEducaAdmin(): RequestHandler {
 export function isEducaAdmin(roleCode: string): boolean {
   return env.educaAdminRoles.includes(roleCode);
 }
+
+/** Vrai si le role peut editer le contenu (modeles / rendered_body). */
+export function isTemplateManager(roleCode: string): boolean {
+  return env.templateManagerRoles.includes(roleCode);
+}

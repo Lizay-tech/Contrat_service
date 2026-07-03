@@ -72,6 +72,15 @@ Content-Type: application/json
   "amount": 27000
 }
 
+### Ré-éditer le CONTENU d'un contrat DRAFT (renderedBody, assaini, rôle gestionnaire)
+PATCH {{baseUrl}}/contracts/{{contractId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "renderedBody": "<h1>Contrat</h1><h2>Article 1</h2><p>Texte ré-édité…</p>"
+}
+
 ### Ajouter une partie
 POST {{baseUrl}}/contracts/{{contractId}}/parties
 Authorization: Bearer {{token}}

@@ -43,6 +43,8 @@ export const updateContractSchema = z
     currency: z.string().length(3).optional(),
     renewalMode: z.nativeEnum(RenewalMode).optional(),
     metadata: z.record(z.unknown()).optional(),
+    // Contenu HTML editable (re-edition d'un contrat DRAFT). Assaini cote service.
+    renderedBody: z.string().min(1).optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, {
     message: 'Aucun champ a mettre a jour',
@@ -74,6 +76,9 @@ export const fromTemplateSchema = z.object({
   // Sources d'agregation (pre-remplissage automatique des variables).
   employeeId: uuid.optional(),
   assignmentId: uuid.optional(),
+  // Corps HTML deja compose: si fourni, utilise TEL QUEL (assaini) au lieu de
+  // re-rendre le modele. Reserve aux gestionnaires de contenu (RBAC).
+  renderedBody: z.string().min(1).optional(),
   variables: z.record(z.unknown()).default({}),
   parties: z.array(addPartySchema).default([]),
   title: z.string().min(3).max(255).optional(),

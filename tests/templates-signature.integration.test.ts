@@ -212,6 +212,76 @@ describe('Contrat depuis template + PDF', () => {
   });
 });
 
+describe('Edition du contenu (renderedBody)', () => {
+  const schoolA = randomUUID();
+  const manager = () => signToken({ schoolId: schoolA, roleCode: 'SCHOOL_ADMIN' });
+  const nonManager = () => signToken({ schoolId: schoolA, roleCode: 'ENSEIGNANT' });
+
+  const CUSTOM = '<h1>Contrat personnalise</h1><p>Texte {{x}}</p><script>alert(1)</script>';
+
+  it('from-template utilise le renderedBody fourni TEL QUEL (assaini) sans re-render', async () => {
+    const templateId = await predefinedTemplateId(manager(), 'cdi');
+    const res = await request(app)
+      .post(`${API}/contracts/from-template`)
+      .set('Authorization', bearer(manager()))
+      .send({ templateId, title: 'Perso', startDate: '2026-09-01', renderedBody: CUSTOM, parties: [] });
+
+    expect(res.status).toBe(201);
+    const body = res.body.data.renderedBody as string;
+    expect(body).toContain('Contrat personnalise');
+    // Le corps du modele n'est PAS rendu
+    expect(body).not.toContain('duree indeterminee');
+    // Script assaini
+    expect(body).not.toContain('<script');
+    expect(body).not.toContain('alert(1)');
+  });
+
+  it('refuse renderedBody a un role non gestionnaire (403)', async () => {
+    const templateId = await predefinedTemplateId(nonManager(), 'cdi');
+    const res = await request(app)
+      .post(`${API}/contracts/from-template`)
+      .set('Authorization', bearer(nonManager()))
+      .send({ templateId, startDate: '2026-09-01', renderedBody: CUSTOM, parties: [] });
+    expect(res.status).toBe(403);
+  });
+
+  it('PATCH re-edite rendered_body d un DRAFT (assaini) puis le PDF le reflete', async () => {
+    const typesRes = await request(app).get(`${API}/contract-types`).set('Authorization', bearer(manager()));
+    const typeId = typesRes.body.data.find((t: { code: string }) => t.code === 'PERSONNEL_CDI').id;
+    const created = await request(app)
+      .post(`${API}/contracts`)
+      .set('Authorization', bearer(manager()))
+      .send({ contractTypeId: typeId, title: 'A editer' });
+    const id = created.body.data.id;
+
+    const patched = await request(app)
+      .patch(`${API}/contracts/${id}`)
+      .set('Authorization', bearer(manager()))
+      .send({ renderedBody: '<h2>Version reeditee</h2><p>ok</p><script>x()</script>' });
+    expect(patched.status).toBe(200);
+    expect(patched.body.data.renderedBody).toContain('Version reeditee');
+    expect(patched.body.data.renderedBody).not.toContain('<script');
+
+    const pdf = await request(app).get(`${API}/contracts/${id}/pdf`).set('Authorization', bearer(manager()));
+    expect(pdf.status).toBe(200);
+    expect(pdf.body.slice(0, 4).toString()).toBe('%PDF');
+  });
+
+  it('refuse PATCH renderedBody a un role non gestionnaire (403)', async () => {
+    const typesRes = await request(app).get(`${API}/contract-types`).set('Authorization', bearer(nonManager()));
+    const typeId = typesRes.body.data.find((t: { code: string }) => t.code === 'PERSONNEL_CDI').id;
+    const created = await request(app)
+      .post(`${API}/contracts`)
+      .set('Authorization', bearer(nonManager()))
+      .send({ contractTypeId: typeId, title: 'Contrat non manager' });
+    const res = await request(app)
+      .patch(`${API}/contracts/${created.body.data.id}`)
+      .set('Authorization', bearer(nonManager()))
+      .send({ renderedBody: '<p>hack</p>' });
+    expect(res.status).toBe(403);
+  });
+});
+
 describe('Cycle de signature -> ACTIVE', () => {
   const schoolA = randomUUID();
   const admin = () => signToken({ schoolId: schoolA, roleCode: 'SCHOOL_ADMIN' });
