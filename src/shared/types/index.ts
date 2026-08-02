@@ -9,12 +9,34 @@ export enum ContractScope {
   ETABLISSEMENT = 'ETABLISSEMENT',
 }
 
-/** Etats du cycle de vie d'un contrat (machine a etats, cf. domain). */
+/**
+ * Etats du cycle de vie d'un contrat (machine a etats, cf. domain).
+ *
+ * Les trois etats de signature nommes ont ete ajoutes pour les contrats
+ * d'abonnement, qui se signent a DEUX parties. `PENDING_SIGNATURE` ne dit pas
+ * QUI l'on attend et ne sait pas exprimer « une des deux a signe » : suivre un
+ * parcours a deux signataires avec ce seul etat obligerait a interroger les
+ * signataires pour repondre a « ou en est ce contrat ? ».
+ *
+ * Les etats existants sont conserves tels quels : les contrats de travail en
+ * production continuent d'emprunter leur propre parcours.
+ */
 export enum ContractStatus {
   DRAFT = 'DRAFT',
   PENDING_APPROVAL = 'PENDING_APPROVAL',
   APPROVED = 'APPROVED',
   PENDING_SIGNATURE = 'PENDING_SIGNATURE',
+  /** Abonnement : au tour d'EDUCA de signer. */
+  WAITING_SIGNATURE_ADMIN = 'WAITING_SIGNATURE_ADMIN',
+  /** Abonnement : au tour de l'etablissement de signer. */
+  WAITING_SIGNATURE_SCHOOL = 'WAITING_SIGNATURE_SCHOOL',
+  /** Abonnement : une partie a signe, l'autre est attendue. */
+  PARTIALLY_SIGNED = 'PARTIALLY_SIGNED',
+  /**
+   * Une partie a REFUSE de signer. Distinct de CANCELLED, qui est le retrait du
+   * contrat par EDUCA : confondre les deux effacerait la raison de l'echec.
+   */
+  REJECTED = 'REJECTED',
   ACTIVE = 'ACTIVE',
   AMENDED = 'AMENDED',
   EXPIRING = 'EXPIRING',
@@ -23,6 +45,18 @@ export enum ContractStatus {
   TERMINATED = 'TERMINATED',
   CANCELLED = 'CANCELLED',
   ARCHIVED = 'ARCHIVED',
+}
+
+/**
+ * Statut d'un service couvert par un contrat d'abonnement.
+ * Vocabulaire repris tel quel de service-management-service : deux echelles
+ * differentes pour la meme realite obligeraient a traduire a chaque lecture.
+ */
+export enum ServiceLineStatus {
+  ACTIVE = 'ACTIVE',
+  INACTIVE = 'INACTIVE',
+  SUSPENDED = 'SUSPENDED',
+  PENDING = 'PENDING',
 }
 
 export enum RenewalMode {
@@ -120,6 +154,7 @@ export interface TenantContext {
 export const enumValues = {
   ContractScope: Object.values(ContractScope),
   ContractStatus: Object.values(ContractStatus),
+  ServiceLineStatus: Object.values(ServiceLineStatus),
   RenewalMode: Object.values(RenewalMode),
   PartyType: Object.values(PartyType),
   RoleInContract: Object.values(RoleInContract),

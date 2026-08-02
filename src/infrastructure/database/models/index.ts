@@ -8,6 +8,8 @@ import { ContractTemplateModel } from './contract-template.model';
 import { TemplateVersionModel } from './template-version.model';
 import { ClauseModel, TemplateClauseModel } from './clause.model';
 import { SignatureRequestModel, SignatoryModel } from './signature-request.model';
+import { ContractServiceLineModel } from './contract-service-line.model';
+import { ContractVersionModel } from './contract-version.model';
 
 /**
  * Associations. Les modeles s'auto-enregistrent aupres de l'instance sequelize
@@ -73,6 +75,19 @@ ContractModel.hasMany(SignatureRequestModel, {
   as: 'signatureRequests',
 });
 
+// ----- Abonnement etablissement -----
+ContractModel.hasMany(ContractServiceLineModel, {
+  foreignKey: 'contract_id',
+  as: 'serviceLines',
+});
+ContractServiceLineModel.belongsTo(ContractModel, { foreignKey: 'contract_id', as: 'contract' });
+
+ContractModel.hasMany(ContractVersionModel, {
+  foreignKey: 'contract_id',
+  as: 'versions',
+});
+ContractVersionModel.belongsTo(ContractModel, { foreignKey: 'contract_id', as: 'contract' });
+
 export {
   ContractTypeModel,
   ContractModel,
@@ -86,4 +101,6 @@ export {
   TemplateClauseModel,
   SignatureRequestModel,
   SignatoryModel,
+  ContractServiceLineModel,
+  ContractVersionModel,
 };
