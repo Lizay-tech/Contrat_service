@@ -75,7 +75,7 @@ const CONTRACT_CSS = `
   .entete-baseline { font-size: 9.5px; color: #8A94A6; }
   .entete-nom-ecole { font-size: 12.5px; font-weight: 900; color: #2A3644; }
   .entete-role { font-size: 9.5px; color: #8A94A6; }
-  .contrat-entete::after { content: ''; display: block; height: 2px; background: #1B3A6B; margin-top: 14px; opacity: .85; }
+  .entete-filet { display: block; height: 2px; margin-top: 14px; background: #1B3A6B; }
   .contrat-titre { text-align: center; margin: 0 0 30px; }
   .contrat-titre h1 { font-size: 18px; font-weight: 900; line-height: 1.35; margin: 0; letter-spacing: .01em; color: #1B3A6B; }
   .contrat-reference { margin: 10px 0 0; font-size: 11px; font-weight: 600; color: #5A6B80; text-align: center; }
