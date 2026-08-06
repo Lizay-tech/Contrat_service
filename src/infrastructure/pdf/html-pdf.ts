@@ -1,6 +1,6 @@
 import puppeteer, { type Browser } from 'puppeteer';
-import { env } from '../../shared/config/env';
 import { logger } from '../../shared/config/logger';
+import { upgradeHeader } from './legacy-header';
 
 /**
  * Generation PDF via Puppeteer (Chromium headless) - rendu HTML+CSS FIDELE.
@@ -140,11 +140,15 @@ function wrapDocument(bodyHtml: string, options: HtmlPdfOptions): string {
   // Aucune mention "EDUCA.TECH" ajoutee ici: le corps publie porte deja son
   // propre en-tete, avec les deux Parties et leurs logos. En rajouter une
   // produisait deux identites empilees en haut de la premiere page.
+  //
+  // Le bandeau des documents publies AVANT les logos est remis a niveau ici,
+  // comme le font deja les deux consoles: sans cela, le PDF -- le document qui
+  // fait foi -- serait le seul des trois a montrer l'ancienne presentation.
   return `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8"><style>${CONTRACT_CSS}</style></head>
 <body>
 ${header}
-${bodyHtml}
+${upgradeHeader(bodyHtml)}
 ${footer}
 </body></html>`;
 }
