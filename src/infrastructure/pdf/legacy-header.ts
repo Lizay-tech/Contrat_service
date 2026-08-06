@@ -33,6 +33,10 @@ const SMALL = /<small[^>]*>([\s\S]*?)<\/small>/gi;
 /** Charte du document, identique a celle des deux consoles. */
 const PRIMARY = '#1B3A6B';
 
+// NB: les libelles emis par ce module sont ACCENTUES, contrairement aux
+// commentaires. Ils figurent DANS le contrat remis au client, et l'ancien
+// bandeau qu'ils remplacent portait deja « Établissement cocontractant ».
+
 function esc(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -87,7 +91,7 @@ export function upgradeHeader(html: string): string {
     schoolName !== ''
       ? `<td class="entete-texte entete-texte-ecole">
         <span class="entete-nom-ecole">${esc(schoolName)}</span>
-        <span class="entete-role">Etablissement cocontractant</span>
+        <span class="entete-role">Établissement cocontractant</span>
       </td>
       <td class="entete-vignette entete-vignette-ecole"><span class="entete-initiale">${initial(
         schoolName,

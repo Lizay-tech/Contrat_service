@@ -12,6 +12,9 @@ import {
   ContractStatus,
   PartyType,
   RoleInContract,
+  SignatoryStatus,
+  SignatureRequestStatus,
+  SignatureType,
   type AuthContext,
 } from '../../shared/types';
 import {
@@ -33,7 +36,14 @@ import {
   missingVariableKeys,
   renderTemplate,
 } from '../../domain/template/render';
-import { htmlToPdf } from '../../infrastructure/pdf/html-pdf';
+import {
+  htmlToPdf,
+  htmlToPdfWithSignatures,
+  type SignatureBlock,
+} from '../../infrastructure/pdf/html-pdf';
+// Le depot des signatures, et non son service: celui-ci importe le present
+// module (transitions d'etat), un import croise creerait un cycle.
+import * as signatureRepo from '../signature/signature.repository';
 import {
   ContractEvents,
   publishContractEvent,
@@ -581,6 +591,45 @@ function buildStructuredHtml(
   );
 }
 
+/**
+ * Signatures a apposer sur le PDF d'un contrat, INDEXEES PAR RANG.
+ *
+ * ── Pourquoi le PDF doit les porter ─────────────────────────────────────────
+ * Le corps publie contient une case de signature VIDE: il est fige avant toute
+ * apposition, et cette case le reste a jamais. Le PDF telecharge depuis la
+ * fiche du contrat la montrait donc telle quelle -- pire, avec les noms et la
+ * date resolus a la publication, ce qui donnait a un contrat non signe
+ * l'apparence d'un contrat signe.
+ *
+ * Le rang 0 est EDUCA, les suivants l'etablissement (convention posee a la
+ * creation de la demande). Un signataire encore en attente vaut `null`: sa case
+ * porte alors "En attente de signature", ce qui est l'information.
+ *
+ * Rend un tableau VIDE si aucune demande n'existe: le corps garde alors sa case
+ * d'origine, qui est le bon rendu pour un contrat qui n'est pas encore en
+ * signature.
+ */
+async function signatureBlocksFor(contractId: string): Promise<Array<SignatureBlock | null>> {
+  const requests = await signatureRepo.listRequestsByContract(contractId);
+  // `listRequestsByContract` trie du plus recent au plus ancien: la premiere
+  // demande non annulee decrit l'etat courant.
+  const current = requests.find((r) => r.status !== SignatureRequestStatus.CANCELLED) ?? requests[0];
+  if (!current) return [];
+
+  const signatories = await signatureRepo.listSignatories(current.id);
+  return signatories.map((s) =>
+    s.status === SignatoryStatus.SIGNED
+      ? {
+          name: s.name,
+          role: s.email,
+          date: s.signed_at ? formatDateFr(s.signed_at) : '',
+          type: s.signature_type ?? SignatureType.TEXT,
+          render: s.signature_render,
+        }
+      : null,
+  );
+}
+
 /** (Re)genere le PDF d'un contrat (corps rendu si disponible, sinon fiche structuree). */
 export async function getContractPdf(id: string): Promise<ContractPdf> {
   const contract = await repo.findContractById(id);
@@ -605,6 +654,11 @@ export async function getContractPdf(id: string): Promise<ContractPdf> {
       })),
     );
   }
-  const buffer = await htmlToPdf(html);
+  // Les signatures recueillies prennent la place de la case figee. Sans
+  // demande de signature, le tableau est vide et le corps reste inchange.
+  const blocks = await signatureBlocksFor(id);
+  const buffer =
+    blocks.length > 0 ? await htmlToPdfWithSignatures(html, {}, blocks) : await htmlToPdf(html);
+
   return { buffer, fileName: `${contract.contract_number}.pdf` };
 }

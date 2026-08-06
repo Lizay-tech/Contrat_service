@@ -164,7 +164,13 @@ ${footer}
 const FROZEN_SIGNATURE_TABLE =
   /<table[^>]*class="[^"]*\bsignatures\b[^"]*"[^>]*>[\s\S]*?<\/table>/i;
 
-/** Une case du bloc de signature. */
+/**
+ * Une case du bloc de signature.
+ *
+ * NB: les libelles sont ACCENTUES, contrairement au reste de ce fichier. Ce
+ * sont les seuls textes d'ici qui figurent DANS le contrat remis au client, et
+ * non dans un journal ou un commentaire.
+ */
 function signatureCell(title: string, sig: SignatureBlock | null): string {
   let mark = '<span class="sig-attente">En attente de signature</span>';
   if (sig) {
@@ -204,7 +210,7 @@ function signaturesHtml(signatures: Array<SignatureBlock | null>): string {
   return `<table class="signatures" style="width:100%">
   <tr>
     ${signatureCell('Pour EDUCA', signatures[0] ?? null)}
-    ${signatureCell("Pour l'Etablissement", signatures[1] ?? null)}
+    ${signatureCell('Pour l’Établissement', signatures[1] ?? null)}
   </tr>
 </table>`;
 }
