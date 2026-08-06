@@ -45,6 +45,22 @@ function base(): string {
   return `${env.clients.signatureUrl}/api`;
 }
 
+/**
+ * Message d'injoignabilite NOMMANT l'adresse tentee.
+ *
+ * « Le service de signature est injoignable » ne disait pas LEQUEL: sur une
+ * instance ou SIGNATURE_SERVICE_URL pointe sur un hote qui n'existe pas
+ * (signature.educasoft.tech ne resout pas), l'exploitant cherchait une panne
+ * la ou il n'y avait qu'une variable mal remplie. L'adresse n'est pas un
+ * secret: elle figure deja dans la configuration et dans les journaux.
+ */
+function unreachable(): SignatureServiceError {
+  return new SignatureServiceError(
+    `Le service de signature est injoignable a l'adresse ${base()} ` +
+      `(SIGNATURE_SERVICE_URL). Verifiez que le service ecoute et que l'adresse est correcte.`,
+  );
+}
+
 function unwrap<T>(body: unknown): T {
   const b = body as { data?: T };
   return (b?.data ?? body) as T;
@@ -62,11 +78,16 @@ export async function listUserSignatures(
       signal: AbortSignal.timeout(5000),
     });
   } catch (err) {
-    logger.error({ err }, '[signature-client] listUserSignatures: service injoignable');
-    throw new SignatureServiceError('Le service de signature est injoignable');
+    logger.error(
+      { err, url: base() },
+      '[signature-client] listUserSignatures: service injoignable',
+    );
+    throw unreachable();
   }
   if (!res.ok) {
-    throw new SignatureServiceError(`Le service de signature a repondu ${res.status}`);
+    throw new SignatureServiceError(
+      `Le service de signature (${base()}) a repondu ${res.status}`,
+    );
   }
   const data = unwrap<RemoteSignature[]>(await res.json());
   return Array.isArray(data) ? data : [];
@@ -95,11 +116,15 @@ export async function getSignature(
       signal: AbortSignal.timeout(5000),
     });
   } catch (err) {
-    logger.error({ err, id }, '[signature-client] getSignature: service injoignable');
-    throw new SignatureServiceError('Le service de signature est injoignable');
+    logger.error({ err, id, url: base() }, '[signature-client] getSignature: service injoignable');
+    throw unreachable();
   }
   if (res.status === 404) return null;
-  if (!res.ok) throw new SignatureServiceError(`Le service de signature a repondu ${res.status}`);
+  if (!res.ok) {
+    throw new SignatureServiceError(
+      `Le service de signature (${base()}) a repondu ${res.status}`,
+    );
+  }
   return unwrap<RemoteSignature>(await res.json());
 }
 

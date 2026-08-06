@@ -27,6 +27,17 @@ async function bootstrap(): Promise<void> {
     logger.error({ err }, '[boot] RabbitMQ indisponible au demarrage');
   }
 
+  // Adresses des services appeles, journalisees au demarrage.
+  //
+  // Sans cela, une SIGNATURE_SERVICE_URL erronee ne se manifestait qu'au
+  // premier clic sur "Signer", sous la forme d'un "service injoignable" que
+  // rien ne rattachait a une variable d'environnement. Ce sont des adresses,
+  // pas des secrets.
+  logger.info(
+    { signature: env.clients.signatureUrl },
+    '[boot] services appeles (verifiez ces adresses si un appel sortant echoue)',
+  );
+
   const app = createApp();
   const server = app.listen(env.port, () => {
     logger.info(
