@@ -27,29 +27,72 @@ export interface SignatureBlock {
   render?: string | null;
 }
 
-/** CSS des contrats, injecte systematiquement avant conversion. */
+/**
+ * CSS des contrats, injecte systematiquement avant conversion.
+ *
+ * ── En-tete et titre: feuille PARTAGEE ───────────────────────────────────────
+ * Les regles `.contrat-entete`, `.entete-*` et `.contrat-titre` sont le jumeau
+ * de `lib/contracts/documentCss.ts` (console EDUCA) et de
+ * `features/contrats/lib/documentCss.ts` (console ecole). L'assainisseur retire
+ * les `<style>`: la mise en forme ne voyage pas avec le document, chaque
+ * consommateur apporte la sienne. Si les trois divergent, les deux Parties
+ * signent un document qui ne se presente pas de la meme facon selon l'ecran.
+ * Toute modification ici doit etre reportee dans les deux autres.
+ *
+ * Aucune police distante ni @import: Chromium rend sans acces reseau.
+ */
 const CONTRACT_CSS = `
   * { box-sizing: border-box; }
-  body { font-family: Helvetica, Arial, sans-serif; font-size: 12px; color: #1f2937; line-height: 1.55; margin: 0; }
-  .contract-brand { text-align: right; font-size: 11px; color: #6b7280; }
-  .contract-header { text-align: center; border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 16px; font-style: italic; color: #4b5563; }
-  h1 { font-size: 20px; text-align: center; margin: 14px 0; }
-  h2 { font-size: 15px; margin: 18px 0 6px; border-bottom: 1px solid #e5e7eb; padding-bottom: 3px; }
-  h3 { font-size: 13px; margin: 14px 0 4px; color: #111827; }
-  p { margin: 6px 0; text-align: justify; }
-  ul { margin: 6px 0 6px 18px; padding: 0; }
-  li { margin: 3px 0; }
-  table { width: 100%; border-collapse: collapse; margin: 8px 0; }
-  td, th { padding: 4px 6px; vertical-align: top; }
-  .var-missing { background: #FEF3C7; color: #92400E; padding: 0 2px; border-radius: 2px; }
-  .signatures { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 24px; }
-  .sign-zone { flex: 1 1 40%; min-width: 220px; border-top: 1px solid #9ca3af; padding-top: 6px; margin-top: 36px; }
-  .sign-zone .sig-name { font-weight: bold; }
-  .sign-zone .sig-role { font-size: 10px; color: #6b7280; }
-  .sign-zone .sig-text { font-family: 'Segoe Script', cursive; font-size: 22px; }
-  .sign-zone img { max-height: 60px; max-width: 200px; }
-  .sign-zone .sig-date { font-size: 10px; color: #6b7280; margin-top: 4px; }
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 12px; color: #2A3644; line-height: 1.6; margin: 0; }
+  .contract-header { text-align: center; padding-bottom: 8px; margin-bottom: 16px; font-style: italic; color: #4b5563; }
+  h1 { font-size: 18px; text-align: center; margin: 14px 0; color: #1B3A6B; }
+  h2 { font-size: 13px; font-weight: 900; letter-spacing: .04em; margin: 22px 0 10px; color: #1B3A6B; }
+  h3 { font-size: 12.5px; margin: 16px 0 8px; color: #111827; }
+  p { margin: 0 0 10px; text-align: justify; }
+  ul, ol { margin: 0 0 12px; padding-left: 20px; }
+  li { margin: 0 0 6px; }
+  table { width: 100%; border-collapse: collapse; margin: 0 0 16px; font-size: 11px; }
+  td, th { border: 1px solid #E3E8EF; padding: 6px 8px; vertical-align: top; text-align: left; }
+  th { background: rgba(27,58,107,.05); font-weight: 900; text-transform: uppercase; font-size: 9.5px; letter-spacing: .03em; color: #5A6B80; }
+  .var-missing { background: #FEF3C7; color: #92400E; padding: 0 3px; border-radius: 3px; font-weight: 700; }
+  .contrat-article { page-break-inside: auto; }
   .contract-footer { margin-top: 24px; text-align: center; font-size: 9px; color: #6b7280; font-style: italic; }
+
+  /* ── En-tete et titre (feuille partagee) ── */
+  .contrat-entete { margin: 0 0 26px; }
+  .entete-parties { width: 100%; border-collapse: collapse; margin: 0; }
+  .entete-parties td { border: 0; padding: 0; vertical-align: middle; }
+  .entete-vignette { width: 54px; }
+  .entete-vignette-ecole { text-align: right; }
+  .entete-logo { width: 46px; height: 46px; object-fit: contain; display: block; }
+  .entete-vignette-ecole .entete-logo { margin-left: auto; }
+  .entete-initiale { display: inline-block; width: 44px; height: 44px; line-height: 44px; text-align: center; border-radius: 12px; font-weight: 900; font-size: 17px; color: #fff; background: #1B3A6B; }
+  .entete-texte { padding-left: 12px !important; }
+  .entete-texte-ecole { text-align: right; padding-left: 0 !important; padding-right: 12px !important; }
+  .entete-texte span { display: block; line-height: 1.25; }
+  .entete-marque { font-size: 17px; font-weight: 900; letter-spacing: .02em; color: #1B3A6B; }
+  .entete-raison { font-size: 10.5px; font-weight: 700; color: #5A6B80; }
+  .entete-baseline { font-size: 9.5px; color: #8A94A6; }
+  .entete-nom-ecole { font-size: 12.5px; font-weight: 900; color: #2A3644; }
+  .entete-role { font-size: 9.5px; color: #8A94A6; }
+  .contrat-entete::after { content: ''; display: block; height: 2px; background: #1B3A6B; margin-top: 14px; opacity: .85; }
+  .contrat-titre { text-align: center; margin: 0 0 30px; }
+  .contrat-titre h1 { font-size: 18px; font-weight: 900; line-height: 1.35; margin: 0; letter-spacing: .01em; color: #1B3A6B; }
+  .contrat-reference { margin: 10px 0 0; font-size: 11px; font-weight: 600; color: #5A6B80; text-align: center; }
+  .contrat-filet { display: block; width: 64px; height: 2px; margin: 18px auto 0; background: #17A2B8; }
+
+  /* ── Bloc de signature APPOSE ──
+     Un tableau et non flex: en impression, un conteneur flex se scinde entre
+     deux pages et coupe un paraphe en deux. */
+  table.signatures { margin-top: 8px; page-break-inside: avoid; }
+  table.signatures td.case-signature { width: 50%; border: 1px solid #C9D3E0; padding: 12px 14px; vertical-align: top; }
+  .sig-titre { font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; color: #5A6B80; margin: 0 0 10px; }
+  .sig-zone { height: 76px; border-bottom: 1px solid #C9D3E0; text-align: center; margin-bottom: 8px; position: relative; }
+  .sig-zone img { max-height: 68px; max-width: 100%; object-fit: contain; position: absolute; bottom: 2px; left: 0; right: 0; margin: 0 auto; }
+  .sig-zone .sig-text { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 24px; color: #1B3A6B; position: absolute; bottom: 6px; left: 0; right: 0; }
+  .sig-zone .sig-attente { font-size: 9.5px; color: #8A94A6; position: absolute; bottom: 8px; left: 0; right: 0; }
+  .sig-ligne { font-size: 10px; margin: 0 0 2px; }
+  .sig-ligne .sig-label { display: inline-block; width: 62px; font-weight: 700; color: #5A6B80; }
 `;
 
 let browserPromise: Promise<Browser> | null = null;
@@ -94,36 +137,86 @@ function wrapDocument(bodyHtml: string, options: HtmlPdfOptions): string {
   const footer = options.footer
     ? `<div class="contract-footer">${options.footer}</div>`
     : '';
+  // Aucune mention "EDUCA.TECH" ajoutee ici: le corps publie porte deja son
+  // propre en-tete, avec les deux Parties et leurs logos. En rajouter une
+  // produisait deux identites empilees en haut de la premiere page.
   return `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8"><style>${CONTRACT_CSS}</style></head>
 <body>
-<div class="contract-brand">EDUCA.TECH</div>
 ${header}
 ${bodyHtml}
 ${footer}
 </body></html>`;
 }
 
-function signaturesHtml(signatures: SignatureBlock[]): string {
+/**
+ * Le tableau de signature VIDE grave dans le corps publie.
+ *
+ * Le corps est fige au moment de la mise en signature: sa case de paraphe est
+ * vide et le restera. Elle doit donc etre REMPLACEE par les signatures reelles,
+ * pas doublee par une seconde section en fin de document -- ce qui donnait un
+ * PDF portant une case vide puis, plus bas, les vraies signatures.
+ */
+const FROZEN_SIGNATURE_TABLE =
+  /<table[^>]*class="[^"]*\bsignatures\b[^"]*"[^>]*>[\s\S]*?<\/table>/i;
+
+/** Une case du bloc de signature. */
+function signatureCell(title: string, sig: SignatureBlock | null): string {
+  let mark = '<span class="sig-attente">En attente de signature</span>';
+  if (sig) {
+    if (sig.type === 'DRAWN' && sig.render) {
+      mark = `<img src="${sig.render}" alt="Signature de ${escapeHtml(sig.name)}"/>`;
+    } else if (sig.render) {
+      mark = `<span class="sig-text">${escapeHtml(sig.render)}</span>`;
+    } else {
+      // Signataire signe dont le trace manque: la mention vaut mieux que le
+      // silence, qui laisserait croire qu'il n'a pas signe.
+      mark = `<span class="sig-text">${escapeHtml(sig.name)}</span>`;
+    }
+  }
+
+  const row = (label: string, value: string): string =>
+    `<p class="sig-ligne"><span class="sig-label">${label}</span>${escapeHtml(value) || '—'}</p>`;
+
+  return `<td class="case-signature">
+      <p class="sig-titre">${escapeHtml(title)}</p>
+      <div class="sig-zone">${mark}</div>
+      ${row('Nom', sig?.name ?? '')}
+      ${row('Courriel', sig?.role ?? '')}
+      ${row('Date', sig?.date ?? '')}
+    </td>`;
+}
+
+/**
+ * Bloc de signature des deux Parties.
+ *
+ * L'attribution se fait par le RANG, jamais par le nom: la console cree
+ * invariablement EDUCA au rang 0 et l'etablissement aux rangs suivants.
+ * Reconnaitre EDUCA a son nom echouerait des qu'un representant signe sous son
+ * propre patronyme, ce qui est le cas normal.
+ */
+function signaturesHtml(signatures: Array<SignatureBlock | null>): string {
   if (!signatures.length) return '';
-  const zones = signatures
-    .map((sig) => {
-      let sig_render = '';
-      if (sig.type === 'DRAWN' && sig.render) {
-        sig_render = `<img src="${sig.render}" alt="signature"/>`;
-      } else if (sig.render) {
-        sig_render = `<div class="sig-text">${escapeHtml(sig.render)}</div>`;
-      }
-      const role = sig.role ? `<div class="sig-role">${escapeHtml(sig.role)}</div>` : '';
-      return `<div class="sign-zone">
-        <div class="sig-name">${escapeHtml(sig.name)}</div>
-        ${role}
-        ${sig_render}
-        <div class="sig-date">Signe le ${escapeHtml(sig.date)}</div>
-      </div>`;
-    })
-    .join('');
-  return `<h2>Signatures</h2><div class="signatures">${zones}</div>`;
+  return `<table class="signatures" style="width:100%">
+  <tr>
+    ${signatureCell('Pour EDUCA', signatures[0] ?? null)}
+    ${signatureCell("Pour l'Etablissement", signatures[1] ?? null)}
+  </tr>
+</table>`;
+}
+
+/**
+ * Substitue les signatures reelles a la case figee du corps.
+ *
+ * Si le corps ne porte aucune case (document venu d'ailleurs), le bloc est
+ * ajoute a la fin plutot que perdu.
+ */
+function withSignatures(body: string, signatures: Array<SignatureBlock | null>): string {
+  const block = signaturesHtml(signatures);
+  if (!block) return body;
+  return FROZEN_SIGNATURE_TABLE.test(body)
+    ? body.replace(FROZEN_SIGNATURE_TABLE, block)
+    : `${body}\n${block}`;
 }
 
 async function renderToPdf(fullHtml: string): Promise<Buffer> {
@@ -149,11 +242,19 @@ export function htmlToPdf(body: string, options: HtmlPdfOptions = {}): Promise<B
   return renderToPdf(wrapDocument(body, options));
 }
 
-/** Genere le PDF SIGNE: corps + section "Signatures" (images/texte apposes). */
+/**
+ * Genere le PDF SIGNE: corps + signatures apposees, EN LIEU ET PLACE de la
+ * case vide gravee dans le corps publie.
+ *
+ * `signatures` est indexe par RANG: l'element 0 est la Partie EDUCA, le 1
+ * l'etablissement. Une case sans signataire signe recoit `null` et s'affiche
+ * "En attente de signature" -- un contrat a moitie signe ne doit pas en avoir
+ * l'air, ni l'inverse.
+ */
 export function htmlToPdfWithSignatures(
   body: string,
   options: HtmlPdfOptions,
-  signatures: SignatureBlock[],
+  signatures: Array<SignatureBlock | null>,
 ): Promise<Buffer> {
-  return renderToPdf(wrapDocument(`${body}${signaturesHtml(signatures)}`, options));
+  return renderToPdf(wrapDocument(withSignatures(body, signatures), options));
 }

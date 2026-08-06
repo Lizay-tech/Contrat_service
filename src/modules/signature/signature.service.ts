@@ -326,10 +326,13 @@ export async function sign(requestId: string, input: SignInput, ctx: SignatureCo
 
   // 3) Apposer sur le PDF: corps + toutes les signatures recueillies (persistees)
   //    + la signature courante. Si cette etape echoue -> rollback (pas de SIGNED).
-  const priorBlocks = all
-    .filter((s) => s.status === SignatoryStatus.SIGNED)
-    .sort((a, b) => a.order_index - b.order_index)
-    .map(blockFor);
+  //    Les blocs sont indexes par RANG, pas par ordre d'apposition: la case de
+  //    gauche est celle d'EDUCA (rang 0), celle de droite l'etablissement.
+  //    Empiler les signataires dans l'ordre ou ils ont signe placait la
+  //    signature de l'ecole dans la case d'EDUCA des qu'elle signait la
+  //    premiere. Un signataire encore en attente laisse sa case vide, ce qui
+  //    est l'information: un contrat a moitie signe ne doit pas avoir l'air
+  //    complet.
   const currentBlock: SignatureBlock = {
     name: signatory.name,
     role: signatory.email,
@@ -337,8 +340,15 @@ export async function sign(requestId: string, input: SignInput, ctx: SignatureCo
     type: signatureType,
     render,
   };
+  const blocks = [...all]
+    .sort((a, b) => a.order_index - b.order_index)
+    .map((s) => {
+      if (s.id === signatory.id) return currentBlock;
+      return s.status === SignatoryStatus.SIGNED ? blockFor(s) : null;
+    });
+
   const body = contract.rendered_body ?? fallbackBody(contract);
-  const pdf = await htmlToPdfWithSignatures(body, {}, [...priorBlocks, currentBlock]);
+  const pdf = await htmlToPdfWithSignatures(body, {}, blocks);
 
   const signedDoc = await attachGeneratedPdf({
     tenantSchoolId: request.tenant_school_id,
