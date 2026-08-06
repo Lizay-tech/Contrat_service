@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ### contrat-service — collection d'exemples (VS Code REST Client / IntelliJ HTTP)
 ### Base
 @host = http://localhost:8091
@@ -43,12 +44,101 @@ Content-Type: application/json
 ### 3. Ajouter une partie (employé)
 POST {{base}}/contracts/{{contractId}}/parties
 Authorization: Bearer {{jwt}}
+=======
+### contrat-service — exemples de requêtes (REST Client VSCode / IntelliJ HTTP)
+###
+### Générer un JWT de test (secret partagé educa_access_secret_2026) :
+###
+###   node -e "console.log(require('jsonwebtoken').sign({userId:'11111111-1111-1111-1111-111111111111',schoolId:'22222222-2222-2222-2222-222222222222',roleCode:'DIRECTEUR'},'educa_access_secret_2026',{expiresIn:'2h'}))"
+###
+###   node -e "console.log(require('jsonwebtoken').sign({userId:'33333333-3333-3333-3333-333333333333',schoolId:'99999999-9999-9999-9999-999999999999',roleCode:'SUPER_ADMIN'},'educa_access_secret_2026',{expiresIn:'2h'}))"
+###
+### Puis coller les valeurs ci-dessous.
+
+@baseUrl = http://localhost:8091/api/v1
+@token = COLLER_LE_JWT_DIRECTEUR
+@adminToken = COLLER_LE_JWT_SUPER_ADMIN
+@contractTypeIdPersonnel = COLLER_UN_ID_DE_TYPE_PERSONNEL
+@contractTypeIdEtab = COLLER_UN_ID_DE_TYPE_ETABLISSEMENT
+@contractId = COLLER_UN_ID_DE_CONTRAT
+@subjectSchoolId = 44444444-4444-4444-4444-444444444444
+
+### Santé (publique)
+GET {{baseUrl}}/health
+
+### Référentiel des types de contrat
+GET {{baseUrl}}/contract-types
+Authorization: Bearer {{token}}
+
+### Créer un contrat PERSONNEL (DRAFT)
+POST {{baseUrl}}/contracts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "contractTypeId": "{{contractTypeIdPersonnel}}",
+  "title": "Contrat enseignant - Jean Baptiste",
+  "startDate": "2026-09-01",
+  "durationDays": 300,
+  "amount": 25000,
+  "currency": "HTG"
+}
+
+### Créer un contrat ETABLISSEMENT (admin EDUCA requis)
+POST {{baseUrl}}/contracts
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "contractTypeId": "{{contractTypeIdEtab}}",
+  "title": "Abonnement SaaS 2026",
+  "subjectSchoolId": "{{subjectSchoolId}}",
+  "startDate": "2026-01-01",
+  "amount": 120000
+}
+
+### Liste paginée + filtres
+GET {{baseUrl}}/contracts?page=1&limit=20&status=DRAFT
+Authorization: Bearer {{token}}
+
+### Lister les contrats d'établissement d'une école
+GET {{baseUrl}}/contracts?scope=ETABLISSEMENT&subjectSchoolId={{subjectSchoolId}}
+Authorization: Bearer {{adminToken}}
+
+### Détail
+GET {{baseUrl}}/contracts/{{contractId}}
+Authorization: Bearer {{token}}
+
+### Mise à jour (uniquement en DRAFT)
+PATCH {{baseUrl}}/contracts/{{contractId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Contrat enseignant - Jean Baptiste (révisé)",
+  "amount": 27000
+}
+
+### Ré-éditer le CONTENU d'un contrat DRAFT (renderedBody, assaini, rôle gestionnaire)
+PATCH {{baseUrl}}/contracts/{{contractId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "renderedBody": "<h1>Contrat</h1><h2>Article 1</h2><p>Texte ré-édité…</p>"
+}
+
+### Ajouter une partie
+POST {{baseUrl}}/contracts/{{contractId}}/parties
+Authorization: Bearer {{token}}
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
 Content-Type: application/json
 
 {
   "partyType": "PERSON",
   "roleInContract": "EMPLOYE",
   "fullName": "Jean Baptiste",
+<<<<<<< HEAD
   "email": "jean.baptiste@example.com"
 }
 
@@ -56,6 +146,24 @@ Content-Type: application/json
 ### 4. Uploader un document PDF (multipart)
 POST {{base}}/contracts/{{contractId}}/documents
 Authorization: Bearer {{jwt}}
+=======
+  "email": "jean@ecole.ht"
+}
+
+### Transition d'état (machine à états) — DRAFT -> PENDING_APPROVAL
+POST {{baseUrl}}/contracts/{{contractId}}/transition
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "toStatus": "PENDING_APPROVAL",
+  "reason": "Soumis pour approbation"
+}
+
+### Upload d'un document (multipart)
+POST {{baseUrl}}/contracts/{{contractId}}/documents
+Authorization: Bearer {{token}}
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
 Content-Type: multipart/form-data; boundary=----boundary
 
 ------boundary
@@ -63,6 +171,7 @@ Content-Disposition: form-data; name="type"
 
 ORIGINAL
 ------boundary
+<<<<<<< HEAD
 Content-Disposition: form-data; name="document"; filename="contrat.pdf"
 Content-Type: application/pdf
 
@@ -137,3 +246,158 @@ Content-Type: application/json
 ### 11. Lister les contrats d'une école précise
 GET {{base}}/contracts?scope=ETABLISSEMENT&subjectSchoolId=bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb
 Authorization: Bearer {{jwtEduca}}
+=======
+Content-Disposition: form-data; name="file"; filename="contrat.pdf"
+Content-Type: application/pdf
+
+< ./storage/sample/contrat.pdf
+------boundary--
+
+### Lister les documents
+GET {{baseUrl}}/contracts/{{contractId}}/documents
+Authorization: Bearer {{token}}
+
+### Historique des statuts + audit
+GET {{baseUrl}}/contracts/{{contractId}}/history
+Authorization: Bearer {{token}}
+
+# =====================================================================
+# Phase 2 — Modèles (templates) + Signature électronique
+# =====================================================================
+
+@templateId = COLLER_UN_ID_DE_TEMPLATE
+@requestId = COLLER_UN_ID_DE_DEMANDE_SIGNATURE
+@signatoryId = COLLER_UN_ID_DE_SIGNATAIRE
+
+### Lister les modèles (prédéfinis + école)
+GET {{baseUrl}}/templates?scopeOwner=PREDEFINED&limit=100
+Authorization: Bearer {{token}}
+
+### Détail d'un modèle (+ versions)
+GET {{baseUrl}}/templates/{{templateId}}
+Authorization: Bearer {{token}}
+
+### Variables détectées dans un modèle
+GET {{baseUrl}}/templates/{{templateId}}/variables
+Authorization: Bearer {{token}}
+
+### Cloner un modèle prédéfini (rôle gestionnaire requis)
+POST {{baseUrl}}/templates/{{templateId}}/duplicate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Mon CDI école" }
+
+### Créer un modèle école
+POST {{baseUrl}}/templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Contrat maison",
+  "contractTypeId": "{{contractTypeIdPersonnel}}",
+  "body": "<h1>Contrat</h1><p>{{employee_name}}, poste {{employee_function}}. Salaire {{salary}} {{currency}} ({{salary_in_words}}). Fait le {{today}}.</p>"
+}
+
+### Publier un modèle
+POST {{baseUrl}}/templates/{{templateId}}/publish
+Authorization: Bearer {{token}}
+
+### Prévisualiser (HTML) avec données d'exemple
+POST {{baseUrl}}/templates/{{templateId}}/preview
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "format": "html", "sampleData": { "employee_name": "Marie Claire", "school_name": "Collège Test" } }
+
+### Aperçu d'agrégation (pré-remplissage auto depuis les services)
+GET {{baseUrl}}/contracts/aggregate/preview?employeeId=EMPLOYEE_UUID&templateId={{templateId}}
+Authorization: Bearer {{token}}
+
+### Créer un contrat DEPUIS un modèle AVEC agrégation (auto-remplissage école+employé)
+POST {{baseUrl}}/contracts/from-template
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "templateId": "{{templateId}}",
+  "employeeId": "EMPLOYEE_UUID",
+  "assignmentId": "ASSIGNMENT_UUID",
+  "startDate": "2026-09-01",
+  "amount": 25000,
+  "currency": "HTG",
+  "variables": {},
+  "parties": [
+    { "partyType": "PERSON", "roleInContract": "EMPLOYE", "fullName": "Jean Baptiste", "email": "jean@ecole.ht" }
+  ]
+}
+
+### Créer un contrat DEPUIS un modèle SANS agrégation (variables manuelles)
+POST {{baseUrl}}/contracts/from-template
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "templateId": "{{templateId}}",
+  "title": "CDI Jean Baptiste",
+  "startDate": "2026-09-01",
+  "amount": 25000,
+  "currency": "HTG",
+  "variables": {
+    "employee_name": "Jean Baptiste",
+    "employee_function": "Enseignant",
+    "school_name": "Collège Test",
+    "director_name": "Mme Directrice"
+  },
+  "parties": [
+    { "partyType": "PERSON", "roleInContract": "EMPLOYE", "fullName": "Jean Baptiste", "email": "jean@ecole.ht" }
+  ]
+}
+
+### Télécharger le PDF d'un contrat
+GET {{baseUrl}}/contracts/{{contractId}}/pdf
+Authorization: Bearer {{token}}
+
+### Ouvrir une demande de signature (contrat en APPROVED)
+POST {{baseUrl}}/contracts/{{contractId}}/signature-requests
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "mode": "PARALLEL",
+  "deadline": "2026-09-15",
+  "signatories": [
+    { "name": "Employeur", "email": "employeur@ecole.ht" },
+    { "name": "Employé", "email": "employe@ecole.ht" }
+  ]
+}
+
+### Signatures disponibles de l'utilisateur (via signature-service), flag par défaut
+GET {{baseUrl}}/contracts/{{contractId}}/available-signatures
+Authorization: Bearer {{token}}
+
+### Statut des signatures d'un contrat
+GET {{baseUrl}}/contracts/{{contractId}}/signatures
+Authorization: Bearer {{token}}
+
+### Signer avec la signature PAR DÉFAUT (confirmation obligatoire). Tous signés → ACTIVE
+POST {{baseUrl}}/signature-requests/{{requestId}}/sign
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "signatoryId": "{{signatoryId}}", "confirmed": true }
+
+### Signer avec une signature CHOISIE (signatureId du service 8093)
+POST {{baseUrl}}/signature-requests/{{requestId}}/sign
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "signatoryId": "{{signatoryId}}", "confirmed": true, "signatureId": "ID_SIGNATURE_8093" }
+
+### Relancer un signataire
+POST {{baseUrl}}/signature-requests/{{requestId}}/remind
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "signatoryId": "{{signatoryId}}" }
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3

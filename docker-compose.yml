@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+<<<<<<< HEAD
     container_name: educa_contrat_postgres
     environment:
       POSTGRES_USER: postgres
@@ -13,12 +14,26 @@ services:
       - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
+=======
+    container_name: contrat_postgres
+    environment:
+      POSTGRES_DB: educa_contrat_service
+      POSTGRES_USER: educa
+      POSTGRES_PASSWORD: educa_secret
+    ports:
+      - '5433:5432'
+    volumes:
+      - contrat_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U educa -d educa_contrat_service']
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
       interval: 5s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
+<<<<<<< HEAD
     container_name: educa_contrat_redis
     ports:
       - '6379:6379'
@@ -26,23 +41,42 @@ services:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
+=======
+    container_name: contrat_redis
+    ports:
+      - '6380:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
       retries: 10
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
+<<<<<<< HEAD
     container_name: educa_contrat_rabbitmq
+=======
+    container_name: contrat_rabbitmq
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
     environment:
       RABBITMQ_DEFAULT_USER: educa
       RABBITMQ_DEFAULT_PASS: educa
     ports:
+<<<<<<< HEAD
       - '5672:5672'
       - '15672:15672'
+=======
+      - '5673:5672'
+      - '15673:15672'
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
     healthcheck:
       test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
       interval: 10s
       timeout: 5s
       retries: 10
 
+<<<<<<< HEAD
   # Applies migrations + seeds, then exits. The app waits on its completion.
   migrate:
     build: .
@@ -87,6 +121,11 @@ services:
       - '8091:8091'
     volumes:
       - contrat_uploads:/app/data/uploads
+=======
+  contrat-service:
+    build: .
+    container_name: contrat_service
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
     depends_on:
       postgres:
         condition: service_healthy
@@ -94,6 +133,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+<<<<<<< HEAD
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
@@ -114,3 +154,49 @@ services:
 volumes:
   contrat_pgdata:
   contrat_uploads:
+=======
+    environment:
+      NODE_ENV: production
+      PORT: 8091
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: educa_contrat_service
+      DB_USER: educa
+      DB_PASSWORD: educa_secret
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://educa:educa@rabbitmq:5672
+      RABBITMQ_EXCHANGE: educa.contracts
+      JWT_SECRET: educa_access_secret_2026
+      EDUCA_SYSTEM_TENANT_ID: 00000000-0000-0000-0000-000000000001
+      EDUCA_ADMIN_ROLES: SUPER_ADMIN,EDUCA_ADMIN
+      TEMPLATE_MANAGER_ROLES: SCHOOL_ADMIN,RESP_RH,EDUCA_ADMIN,SUPER_ADMIN
+      UPLOAD_DIR: /app/storage/uploads
+      # Noms de conteneurs sur le reseau partage educa-net (a adapter aux vrais noms).
+      ACADEMIC_YEAR_SERVICE_URL: http://educa-dev-annee:8082
+      SIGNATURE_SERVICE_URL: http://educa-dev-signature:8093
+      COMMUNICATION_SERVICE_URL: http://communication-core-service:8087
+      ECOLE_SERVICE_URL: http://educa-dev-ecole:8080
+      ENSEIGNANT_SERVICE_URL: http://educa-dev-enseignant:8080
+      AFFECTATION_SERVICE_URL: http://educa-dev-affectation:3006
+      MANAGE_ACCOUNT_SERVICE_URL: http://educa-dev-account:8081
+    ports:
+      - '8091:8091'
+    volumes:
+      - contrat_uploads:/app/storage/uploads
+    networks:
+      - default
+      - educa-net
+    # Applique les migrations + seeders puis demarre le service.
+    command: sh -c "npm run migrate:prod && npm run seed:prod && node dist/server.js"
+
+volumes:
+  contrat_pg:
+  contrat_uploads:
+
+networks:
+  # Reseau partage avec le signature-service (et autres microservices EDUCA).
+  # Prerequis (une seule fois): docker network create educa-net
+  educa-net:
+    external: true
+  default: {}
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3

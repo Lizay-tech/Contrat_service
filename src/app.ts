@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import express, { Express } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -13,6 +14,25 @@ import { logger } from './shared/logger';
 
 /** Builds the Express application (no network binding — used by tests too). */
 export function createApp(container: Container): Express {
+=======
+import express, { type Express } from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import compression from 'compression';
+import { pinoHttp } from 'pino-http';
+import { env } from './shared/config/env';
+import { logger } from './shared/config/logger';
+import { buildApiRouter } from './interfaces/routes';
+import {
+  errorMiddleware,
+  notFoundMiddleware,
+} from './interfaces/middlewares/error.middleware';
+// Import des associations Sequelize (effet de bord: enregistre les relations).
+import './infrastructure/database/models';
+
+/** Construit l'application Express (sans demarrer le serveur - testable). */
+export function createApp(): Express {
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
   const app = express();
 
   app.disable('x-powered-by');
@@ -21,6 +41,7 @@ export function createApp(container: Container): Express {
   app.use(helmet());
   app.use(cors());
   app.use(compression());
+<<<<<<< HEAD
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true }));
   app.use(requestId);
@@ -54,6 +75,19 @@ export function createApp(container: Container): Express {
 
   app.use(notFoundHandler);
   app.use(errorHandler);
+=======
+  app.use(express.json({ limit: '2mb' }));
+  app.use(express.urlencoded({ extended: true }));
+
+  if (!env.isTest) {
+    app.use(pinoHttp({ logger }));
+  }
+
+  app.use(env.apiPrefix, buildApiRouter());
+
+  app.use(notFoundMiddleware);
+  app.use(errorMiddleware);
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
 
   return app;
 }

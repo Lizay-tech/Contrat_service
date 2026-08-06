@@ -3,6 +3,11 @@ dist
 coverage
 .git
 .env
+<<<<<<< HEAD
 data
+=======
+.env.local
+storage/uploads
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
 *.log
 tests

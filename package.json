@@ -1,15 +1,21 @@
 {
   "name": "contrat-service",
   "version": "1.0.0",
+<<<<<<< HEAD
   "description": "Contract Management Service (CLM) - EDUCA.TECH",
   "main": "dist/server.js",
   "engines": {
     "node": ">=20"
   },
+=======
+  "description": "EDUCA.TECH Contract Lifecycle Management Service (CLM) - Phase 1",
+  "main": "dist/server.js",
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+<<<<<<< HEAD
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
     "migrate": "ts-node src/infrastructure/database/migrate.ts up",
@@ -20,6 +26,17 @@
     "db:setup": "npm run migrate && npm run seed",
     "test": "cross-env NODE_ENV=test jest --runInBand --forceExit",
     "test:watch": "cross-env NODE_ENV=test jest --watch"
+=======
+    "migrate": "ts-node src/infrastructure/database/migrate.ts up",
+    "migrate:undo": "ts-node src/infrastructure/database/migrate.ts down",
+    "migrate:prod": "node dist/infrastructure/database/migrate.js up",
+    "seed": "ts-node src/infrastructure/database/seed.ts up",
+    "seed:undo": "ts-node src/infrastructure/database/seed.ts down",
+    "seed:prod": "node dist/infrastructure/database/seed.js up",
+    "test": "jest --runInBand --forceExit",
+    "test:watch": "jest --watch",
+    "typecheck": "tsc --noEmit"
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
   },
   "keywords": [
     "educa",
@@ -39,11 +56,19 @@
     "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
+<<<<<<< HEAD
     "pdfkit": "^0.15.0",
+=======
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
     "pg": "^8.12.0",
     "pg-hstore": "^2.3.4",
     "pino": "^9.3.2",
     "pino-http": "^10.2.0",
+<<<<<<< HEAD
+=======
+    "puppeteer": "^25.3.0",
+    "sanitize-html": "^2.17.5",
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
     "sequelize": "^6.37.3",
     "umzug": "^3.8.1",
     "uuid": "^10.0.0",
@@ -57,11 +82,18 @@
     "@types/jest": "^29.5.12",
     "@types/jsonwebtoken": "^9.0.6",
     "@types/multer": "^1.4.11",
+<<<<<<< HEAD
     "@types/node": "^20.14.10",
     "@types/pdfkit": "^0.13.4",
     "@types/supertest": "^6.0.2",
     "@types/uuid": "^10.0.0",
     "cross-env": "^7.0.3",
+=======
+    "@types/node": "^20.14.9",
+    "@types/sanitize-html": "^2.16.1",
+    "@types/supertest": "^6.0.2",
+    "@types/uuid": "^10.0.0",
+>>>>>>> 34a51170a14d49e3daadfd6c75baf0624cf970a3
     "jest": "^29.7.0",
     "pino-pretty": "^11.2.1",
     "supertest": "^7.0.0",
