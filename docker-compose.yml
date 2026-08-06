@@ -68,7 +68,7 @@ services:
       EDUCA_ADMIN_ROLES: SUPER_ADMIN,EDUCA_ADMIN
       TEMPLATE_MANAGER_ROLES: SCHOOL_ADMIN,RESP_RH,EDUCA_ADMIN,SUPER_ADMIN
       UPLOAD_DIR: /app/storage/uploads
-      # Noms de conteneurs sur le reseau partage educa-net (a adapter aux vrais noms).
+      # Noms de conteneurs joignables sur educa-dev-network (cf. bloc networks).
       ACADEMIC_YEAR_SERVICE_URL: http://educa-dev-annee:8082
       SIGNATURE_SERVICE_URL: http://educa-dev-signature:8093
       COMMUNICATION_SERVICE_URL: http://communication-core-service:8087
@@ -82,7 +82,7 @@ services:
       - contrat_uploads:/app/storage/uploads
     networks:
       - default
-      - educa-net
+      - educa-dev-network
     # Applique les migrations + seeders puis demarre le service.
     command: sh -c "npm run migrate:prod && npm run seed:prod && node dist/server.js"
 
@@ -91,8 +91,21 @@ volumes:
   contrat_uploads:
 
 networks:
-  # Reseau partage avec le signature-service (et autres microservices EDUCA).
-  # Prerequis (une seule fois): docker network create educa-net
-  educa-net:
+  # Reseau partage des microservices EDUCA.
+  #
+  # ── Pourquoi ce nom, et pas 'educa-net' ─────────────────────────────────────
+  # Ce fichier declarait 'educa-net' alors que TOUS les hotes qu'il vise sont
+  # des conteneurs 'educa-dev-*' attaches a 'educa-dev-network' (voir le
+  # docker-compose.yml du signature-service, qui y declare
+  # container_name: educa-dev-signature).
+  #
+  # Deux reseaux differents: le DNS interne de Docker ne resout un nom de
+  # conteneur que sur un reseau PARTAGE. Aucun appel sortant n'aboutissait donc,
+  # d'ou le 502 "Le service de signature est injoignable" constate a chaque
+  # tentative de signature -- alors que le service, lui, tournait.
+  #
+  # Prerequis (une seule fois): docker network create educa-dev-network
+  educa-dev-network:
     external: true
+    name: educa-dev-network
   default: {}
