@@ -71,6 +71,19 @@ function serializeSignatory(s: SignatoryModel) {
     signedAt: s.signed_at,
     ip: s.ip,
     device: s.device,
+    // Paraphe REELLEMENT appose: data URL image (DRAWN) ou texte (TEXT).
+    //
+    // Il etait persiste depuis la migration 0005 mais jamais renvoye, si bien
+    // qu'aucune console ne pouvait MONTRER une signature. Le corps publie
+    // (rendered_body) est fige avant toute signature: sa case de paraphe reste
+    // vide a jamais. Les deux Parties ne voyaient donc jamais la signature de
+    // l'autre, ni meme la leur, hors du PDF signe.
+    //
+    // Portee: null tant que le signataire n'a pas signe, et lisible seulement
+    // par qui peut deja lire le contrat et ses signataires -- c'est-a-dire les
+    // Parties elles-memes, a qui le document signe est du.
+    signatureRender: s.signature_render,
+    signedDocumentId: s.signed_document_id,
   };
 }
 
