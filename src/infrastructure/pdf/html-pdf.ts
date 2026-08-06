@@ -47,13 +47,13 @@ const CONTRACT_CSS = `
   .contract-header { text-align: center; padding-bottom: 8px; margin-bottom: 16px; font-style: italic; color: #4b5563; }
   h1 { font-size: 18px; text-align: center; margin: 14px 0; color: #1B3A6B; }
   h2 { font-size: 13px; font-weight: 900; letter-spacing: .04em; margin: 22px 0 10px; color: #1B3A6B; }
-  h3 { font-size: 12.5px; margin: 16px 0 8px; color: #111827; }
+  h3 { font-size: 12.5px; font-weight: 800; margin: 16px 0 8px; color: #2A3644; }
   p { margin: 0 0 10px; text-align: justify; }
   ul, ol { margin: 0 0 12px; padding-left: 20px; }
   li { margin: 0 0 6px; }
   table { width: 100%; border-collapse: collapse; margin: 0 0 16px; font-size: 11px; }
-  td, th { border: 1px solid #E3E8EF; padding: 6px 8px; vertical-align: top; text-align: left; }
-  th { background: rgba(27,58,107,.05); font-weight: 900; text-transform: uppercase; font-size: 9.5px; letter-spacing: .03em; color: #5A6B80; }
+  td, th { border: 1px solid rgba(27,58,107,.08); padding: 6px 8px; vertical-align: top; text-align: left; }
+  th { background: rgba(27,58,107,.04); font-weight: 900; text-transform: uppercase; font-size: 9.5px; letter-spacing: .03em; color: #5B7BA8; }
   .var-missing { background: #FEF3C7; color: #92400E; padding: 0 3px; border-radius: 3px; font-weight: 700; }
   .contrat-article { page-break-inside: auto; }
   .contract-footer { margin-top: 24px; text-align: center; font-size: 9px; color: #6b7280; font-style: italic; }
@@ -71,28 +71,28 @@ const CONTRACT_CSS = `
   .entete-texte-ecole { text-align: right; padding-left: 0 !important; padding-right: 12px !important; }
   .entete-texte span { display: block; line-height: 1.25; }
   .entete-marque { font-size: 17px; font-weight: 900; letter-spacing: .02em; color: #1B3A6B; }
-  .entete-raison { font-size: 10.5px; font-weight: 700; color: #5A6B80; }
-  .entete-baseline { font-size: 9.5px; color: #8A94A6; }
+  .entete-raison { font-size: 10.5px; font-weight: 700; color: #5B7BA8; }
+  .entete-baseline { font-size: 9.5px; color: #8BA3C7; }
   .entete-nom-ecole { font-size: 12.5px; font-weight: 900; color: #2A3644; }
-  .entete-role { font-size: 9.5px; color: #8A94A6; }
+  .entete-role { font-size: 9.5px; color: #8BA3C7; }
   .entete-filet { display: block; height: 2px; margin-top: 14px; background: #1B3A6B; }
   .contrat-titre { text-align: center; margin: 0 0 30px; }
   .contrat-titre h1 { font-size: 18px; font-weight: 900; line-height: 1.35; margin: 0; letter-spacing: .01em; color: #1B3A6B; }
-  .contrat-reference { margin: 10px 0 0; font-size: 11px; font-weight: 600; color: #5A6B80; text-align: center; }
-  .contrat-filet { display: block; width: 64px; height: 2px; margin: 18px auto 0; background: #17A2B8; }
+  .contrat-reference { margin: 10px 0 0; font-size: 11px; font-weight: 600; color: #5B7BA8; text-align: center; }
+  .contrat-filet { display: block; width: 64px; height: 2px; margin: 18px auto 0; background: #17A8C8; }
 
   /* ── Bloc de signature APPOSE ──
      Un tableau et non flex: en impression, un conteneur flex se scinde entre
      deux pages et coupe un paraphe en deux. */
   table.signatures { margin-top: 8px; page-break-inside: avoid; }
   table.signatures td.case-signature { width: 50%; border: 1px solid #C9D3E0; padding: 12px 14px; vertical-align: top; }
-  .sig-titre { font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; color: #5A6B80; margin: 0 0 10px; }
+  .sig-titre { font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; color: #5B7BA8; margin: 0 0 10px; }
   .sig-zone { height: 76px; border-bottom: 1px solid #C9D3E0; text-align: center; margin-bottom: 8px; position: relative; }
   .sig-zone img { max-height: 68px; max-width: 100%; object-fit: contain; position: absolute; bottom: 2px; left: 0; right: 0; margin: 0 auto; }
   .sig-zone .sig-text { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 24px; color: #1B3A6B; position: absolute; bottom: 6px; left: 0; right: 0; }
-  .sig-zone .sig-attente { font-size: 9.5px; color: #8A94A6; position: absolute; bottom: 8px; left: 0; right: 0; }
+  .sig-zone .sig-attente { font-size: 9.5px; color: #8BA3C7; position: absolute; bottom: 8px; left: 0; right: 0; }
   .sig-ligne { font-size: 10px; margin: 0 0 2px; }
-  .sig-ligne .sig-label { display: inline-block; width: 62px; font-weight: 700; color: #5A6B80; }
+  .sig-ligne .sig-label { display: inline-block; width: 62px; font-weight: 700; color: #5B7BA8; }
 `;
 
 let browserPromise: Promise<Browser> | null = null;
